@@ -1,0 +1,56 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Cuatrimestre {
+  id           Int       @id @default(autoincrement())
+  nombre       String    @unique
+  orden        Int
+  licenciatura String    @default("Lic. en Administración y Gestión Empresarial")
+  parciales    Parcial[]
+}
+
+model Parcial {
+  id              Int          @id @default(autoincrement())
+  numero          Int
+  label           String
+  cuatrimestreId  Int
+  cuatrimestre    Cuatrimestre @relation(fields: [cuatrimestreId], references: [id])
+  grupos          Grupo[]
+
+  @@unique([cuatrimestreId, numero])
+}
+
+model Grupo {
+  id        Int       @id @default(autoincrement())
+  nombre    String
+  tutor     String    @default("")
+  alumnos   Int       @default(0)
+  bajas     Int       @default(0)
+  parcialId Int
+  parcial   Parcial   @relation(fields: [parcialId], references: [id], onDelete: Cascade)
+  materias  Materia[]
+}
+
+model Docente {
+  id       Int       @id @default(autoincrement())
+  nombre   String    @unique
+  email    String    @default("")
+  materias Materia[]
+}
+
+model Materia {
+  id         Int      @id @default(autoincrement())
+  nombre     String
+  promedio   Float    @default(0)
+  reprobados Int      @default(0)
+  grupoId    Int
+  docenteId  Int?
+  grupo      Grupo    @relation(fields: [grupoId], references: [id], onDelete: Cascade)
+  docente    Docente? @relation(fields: [docenteId], references: [id])
+}
