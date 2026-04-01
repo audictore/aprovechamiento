@@ -3,40 +3,31 @@ import prisma from '../lib/prisma.js'
 
 const router = Router()
 
-// GET /cuatrimestres
-// Devuelve todos los cuatrimestres ordenados por fecha
 router.get('/', async (_req, res, next) => {
   try {
     const lista = await prisma.cuatrimestre.findMany({
       orderBy: { orden: 'asc' },
       include: {
-        parciales: {
-          orderBy: { numero: 'asc' }
+        programas: {
+          orderBy: { nombre: 'asc' },
+          include: {
+            parciales: { orderBy: { numero: 'asc' } }
+          }
         }
       }
     })
     res.json(lista)
-  } catch (e) {
-    next(e)
-  }
+  } catch (e) { next(e) }
 })
 
-// POST /cuatrimestres
-// Crea un nuevo cuatrimestre
 router.post('/', async (req, res, next) => {
   try {
-    const { nombre, orden, licenciatura } = req.body
-
+    const { nombre, orden } = req.body
     if (!nombre || !orden) {
       return res.status(400).json({ error: 'nombre y orden son requeridos' })
     }
-
     const cuatri = await prisma.cuatrimestre.create({
-      data: {
-        nombre:       nombre.trim(),
-        orden:        Number(orden),
-        licenciatura: licenciatura || 'Lic. en Administración y Gestión Empresarial'
-      }
+      data: { nombre: nombre.trim(), orden: Number(orden) }
     })
     res.status(201).json(cuatri)
   } catch (e) {
@@ -47,16 +38,49 @@ router.post('/', async (req, res, next) => {
   }
 })
 
-// GET /cuatrimestres/:id/parciales
-// Devuelve los parciales de un cuatrimestre específico
-router.get('/:id/parciales', async (req, res, next) => {
+router.get('/:id/programas', async (req, res, next) => {
   try {
-    const parciales = await prisma.parcial.findMany({
+    const programas = await prisma.programaEducativo.findMany({
       where:   { cuatrimestreId: Number(req.params.id) },
-      orderBy: { numero: 'asc' }
+      orderBy: { nombre: 'asc' },
+      include: { parciales: { orderBy: { numero: 'asc' } } }
     })
-    res.json(parciales)
+    res.json(programas)
+  } catch (e) { next(e) }
+})
+
+router.delete('/:id', async (req, res, next) => {
+  try {
+    await prisma.cuatrimestre.delete({
+      where: { id: Number(req.params.id) }
+    })
+    res.json({ ok: true })
   } catch (e) {
+    if (e.code === 'P2025') return res.status(404).json({ error: 'No encontrado' })
+    next(e)
+  }
+})
+
+router.delete('/:cuatriId/programas/:programaId', async (req, res, next) => {
+  try {
+    await prisma.programaEducativo.delete({
+      where: { id: Number(req.params.programaId) }
+    })
+    res.json({ ok: true })
+  } catch (e) {
+    if (e.code === 'P2025') return res.status(404).json({ error: 'No encontrado' })
+    next(e)
+  }
+})
+
+router.delete('/:cuatriId/programas/:programaId/parciales/:parcialId', async (req, res, next) => {
+  try {
+    await prisma.parcial.delete({
+      where: { id: Number(req.params.parcialId) }
+    })
+    res.json({ ok: true })
+  } catch (e) {
+    if (e.code === 'P2025') return res.status(404).json({ error: 'No encontrado' })
     next(e)
   }
 })

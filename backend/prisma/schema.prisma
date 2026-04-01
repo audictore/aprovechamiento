@@ -8,33 +8,43 @@ datasource db {
 }
 
 model Cuatrimestre {
-  id           Int       @id @default(autoincrement())
-  nombre       String    @unique
-  orden        Int
-  licenciatura String    @default("Lic. en Administración y Gestión Empresarial")
-  parciales    Parcial[]
+  id        Int                @id @default(autoincrement())
+  nombre    String             @unique
+  orden     Int
+  programas ProgramaEducativo[]
+}
+
+model ProgramaEducativo {
+  id              Int          @id @default(autoincrement())
+  nombre          String
+  cuatrimestreId  Int
+  cuatrimestre    Cuatrimestre @relation(fields: [cuatrimestreId], references: [id])
+  parciales       Parcial[]
+
+  @@unique([cuatrimestreId, nombre])
 }
 
 model Parcial {
-  id              Int          @id @default(autoincrement())
-  numero          Int
-  label           String
-  cuatrimestreId  Int
-  cuatrimestre    Cuatrimestre @relation(fields: [cuatrimestreId], references: [id])
-  grupos          Grupo[]
+  id         Int               @id @default(autoincrement())
+  numero     Int
+  label      String
+  programaId Int
+  programa   ProgramaEducativo @relation(fields: [programaId], references: [id])
+  grupos     Grupo[]
 
-  @@unique([cuatrimestreId, numero])
+  @@unique([programaId, numero])
 }
 
 model Grupo {
-  id        Int       @id @default(autoincrement())
-  nombre    String
-  tutor     String    @default("")
-  alumnos   Int       @default(0)
-  bajas     Int       @default(0)
-  parcialId Int
-  parcial   Parcial   @relation(fields: [parcialId], references: [id], onDelete: Cascade)
-  materias  Materia[]
+  id         Int       @id @default(autoincrement())
+  nombre     String
+  tutor      String    @default("")
+  alumnos    Int       @default(0)
+  bajas      Int       @default(0)
+  reprobados Int       @default(0)
+  parcialId  Int
+  parcial    Parcial   @relation(fields: [parcialId], references: [id], onDelete: Cascade)
+  materias   Materia[]
 }
 
 model Docente {
