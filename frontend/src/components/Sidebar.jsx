@@ -188,7 +188,7 @@ export default function Sidebar({ cuatrimestres, seleccion, onSelect, onReload, 
                             <button
                               onClick={e => handleLimpiarParcial(e, c.id, prog.id, p)}
                               style={{ background:'none', border:'none', cursor:'pointer', color:'#BA7517', fontSize:11, padding:'0 4px' }}
-                              title="Limpiar datos (subir de nuevo)"
+                              title="Limpiar datos"
                             >
                               ↺
                             </button>
@@ -296,7 +296,7 @@ export default function Sidebar({ cuatrimestres, seleccion, onSelect, onReload, 
             </div>
 
             <div className="field">
-              <label>Archivo Excel (.xlsx) — promedios por materia</label>
+              <label>Archivo Excel (.xlsx)</label>
               <input
                 type="file"
                 accept=".xlsx,.xls"
@@ -305,7 +305,7 @@ export default function Sidebar({ cuatrimestres, seleccion, onSelect, onReload, 
             </div>
 
             <div className="field">
-              <label>PDFs de calificaciones — reprobados exactos (opcional)</label>
+              <label>PDFs de calificaciones (opcional)</label>
               <input
                 type="file"
                 accept=".pdf"

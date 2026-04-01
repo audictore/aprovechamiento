@@ -1,76 +1,130 @@
 import { createRequire } from 'module'
 const require = createRequire(import.meta.url)
-const pdfParse = require('pdf-parse')
 
 export async function parsearPDF(buffer, numParcial) {
-  const data = await pdfParse(buffer)
-  const texto = data.text
+  const { PdfReader } = require('pdfreader')
 
-  // Extraer nombre del grupo desde el PDF
-  const grupoMatch = texto.match(/Grupo:\s*(\d+)[°\s]*([A-Z])/i)
-  const grupo = grupoMatch ? `${grupoMatch[1]}-${grupoMatch[2]}` : null
+  return new Promise((resolve, reject) => {
+    const reader  = new PdfReader()
+    const filas   = {}
+    let grupo     = null
 
-  if (!grupo) return null
+    reader.parseBuffer(buffer, (err, item) => {
+      if (err) { reject(err); return }
 
-  // Índice de columna del promedio según parcial
-  // El PDF tiene columnas: M1 M2 ... P | M1 M2 ... P | M1 M2 ... P
-  // Necesitamos el P (promedio) del parcial seleccionado
-  const parcialLabels = ['Primer Parcial', 'Segundo Parcial', 'Tercer Parcial']
-  const labelBuscado  = parcialLabels[numParcial - 1]
+      if (!item) {
+        const resultado = procesarFilas(filas, grupo, numParcial)
+        resolve(resultado)
+        return
+      }
 
-  const lineas = texto.split('\n').map(l => l.trim()).filter(Boolean)
+      if (item.text) {
+        if (!grupo) {
+          const m = item.text.match(/^(\d+)[°\s]+([A-Z])$/)
+          if (m) grupo = `${m[1]}-${m[2]}`
+        }
 
-  let reprobados  = 0
+        const y = item.y?.toFixed(2)
+        if (y) {
+          if (!filas[y]) filas[y] = []
+          filas[y].push({ x: item.x, text: item.text.trim() })
+        }
+      }
+    })
+  })
+}
+
+function procesarFilas(filas, grupo, numParcial) {
+  let reprobados   = 0
   let totalAlumnos = 0
-  let leyendoAlumnos = false
 
-  for (const linea of lineas) {
-    // Detectar inicio de tabla de alumnos (línea con matrícula numérica)
-    const esAlumno = linea.match(/^(\d{9})\s+(.+?)\s+([\d.]+)/)
-    if (!esAlumno) continue
+  const ysOrdenados = Object.keys(filas)
+    .map(Number)
+    .sort((a, b) => a - b)
 
-    // Extraer todos los números de la línea
-    const nums = linea.match(/[\d.]+/g)?.map(Number) || []
-    if (nums.length < 2) continue
+  // Primero encontrar la fila de encabezado con M1, M2, P para detectar posiciones
+  let posicionesP = []
 
-    // El PDF tiene estructura: matrícula + nombre + notas M1..Mn + P (por cada parcial)
-    // Necesitamos encontrar el promedio P del parcial correcto
-    // Buscamos grupos de números separados por el patrón de materias
-    const promedio = extraerPromedioParcial(nums, numParcial)
-    if (promedio === null) continue
+  for (const y of ysOrdenados) {
+    const celdas = filas[y.toFixed(2)].sort((a, b) => a.x - b.x)
+    const textos = celdas.map(c => c.text)
+
+    // Detectar fila de encabezado M1 M2 ... P
+    const tieneM1 = textos.some(t => t === 'M1')
+    const tieneP  = textos.filter(t => t === 'P').length >= 2
+
+    if (tieneM1 && tieneP) {
+      // Guardar las posiciones X de las columnas P
+      posicionesP = celdas
+        .filter(c => c.text === 'P')
+        .map(c => c.x)
+      break
+    }
+  }
+
+  // Si no encontramos encabezado, usar método anterior
+  if (posicionesP.length < numParcial) {
+    return procesarFilasSinEncabezado(filas, grupo, numParcial, ysOrdenados)
+  }
+
+  // La posición X de la columna P del parcial seleccionado
+  const xP = posicionesP[numParcial - 1]
+
+  for (const y of ysOrdenados) {
+    const celdas = filas[y.toFixed(2)].sort((a, b) => a.x - b.x)
+    const textos = celdas.map(c => c.text)
+
+    // Verificar que la primera celda sea matrícula
+    const primeracelda = textos[0]
+    if (!primeracelda || !/^\d{9}$/.test(primeracelda)) continue
+
+    // Buscar el valor en la columna P del parcial seleccionado
+    // La celda más cercana a xP
+    const celdaP = celdas.reduce((closer, c) => {
+      if (!closer) return c
+      return Math.abs(c.x - xP) < Math.abs(closer.x - xP) ? c : closer
+    }, null)
+
+    if (!celdaP) continue
+
+    const promedio = parseFloat(celdaP.text)
+    if (isNaN(promedio) || promedio === 0) continue
 
     totalAlumnos++
-    if (promedio < 7 && promedio > 0) reprobados++
+    if (promedio < 7) reprobados++
   }
 
   return { grupo, reprobados, totalAlumnos }
 }
 
-function extraerPromedioParcial(nums, numParcial) {
-  // Quitar la matrícula (primer número de 9 dígitos aprox)
-  // Los números restantes son: [M1,M2,...,Mn,P] repetido 3 veces
-  // Necesitamos identificar dónde está el P de cada parcial
+function procesarFilasSinEncabezado(filas, grupo, numParcial, ysOrdenados) {
+  let reprobados   = 0
+  let totalAlumnos = 0
 
-  // Estrategia: el promedio P de cada parcial es el que viene
-  // después de todas las materias de ese parcial
-  // Como no sabemos cuántas materias hay, usamos el patrón:
-  // los números del PDF están ordenados como aparecen en la tabla
+  for (const y of ysOrdenados) {
+    const celdas = filas[y.toFixed(2)].sort((a, b) => a.x - b.x)
+    const textos = celdas.map(c => c.text)
 
-  // Filtrar la matrícula (número >= 100000000)
-  const sinMatricula = nums.filter(n => n < 100000000)
+    const primeracelda = textos[0]
+    if (!primeracelda || !/^\d{9}$/.test(primeracelda)) continue
 
-  // Cada parcial termina en un promedio P
-  // Detectamos los promedios P buscando el patrón de 3 grupos
-  // El total de columnas por parcial es el mismo en todos
-  const totalCols = sinMatricula.length
+    const nums = textos
+      .map(t => parseFloat(t))
+      .filter(n => !isNaN(n) && n >= 0 && n <= 10)
 
-  // Si hay 3 parciales, dividir en 3 partes iguales
-  const colsPorParcial = Math.floor(totalCols / 3)
-  if (colsPorParcial === 0) return null
+    if (nums.length < 6) continue
 
-  // El promedio P está al final de cada grupo
-  const idxP = (numParcial * colsPorParcial) - 1
-  if (idxP >= sinMatricula.length) return null
+    const tamBloque = Math.floor(nums.length / 3)
+    if (tamBloque < 2) continue
 
-  return sinMatricula[idxP]
+    const idxP     = (tamBloque * numParcial) - 1
+    const promedio = nums[idxP]
+
+    if (!promedio || promedio === 0) continue
+
+    totalAlumnos++
+    if (promedio < 7) reprobados++
+  }
+
+  return { grupo, reprobados, totalAlumnos }
 }

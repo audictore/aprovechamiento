@@ -38,14 +38,18 @@ export const uploadExcel = (cuatriId, programa, numParcial, file) => {
   const fd = new FormData()
   fd.append('file', file)
   const prog = encodeURIComponent(programa)
-  return api.post(`/parciales/${cuatriId}/${prog}/${numParcial}/upload`, fd)
+  return api.post(`/parciales/${cuatriId}/${prog}/${numParcial}/upload`, fd, {
+    headers: { 'Content-Type': 'multipart/form-data' }
+  })
 }
 
 export const uploadPDFs = (parcialId, numParcial, files) => {
   const fd = new FormData()
   Array.from(files).forEach(f => fd.append('files', f))
-  fd.append('numParcial', numParcial)
-  return api.post(`/parciales/${parcialId}/upload-pdfs`, fd)
+  fd.append('numParcial', String(numParcial))
+  return api.post(`/parciales/${parcialId}/upload-pdfs`, fd, {
+    headers: { 'Content-Type': 'multipart/form-data' }
+  })
 }
 
 export const eliminarCuatrimestre = (id)                          => api.delete(`/cuatrimestres/${id}`)

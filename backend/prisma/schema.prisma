@@ -8,18 +8,18 @@ datasource db {
 }
 
 model Cuatrimestre {
-  id        Int                @id @default(autoincrement())
-  nombre    String             @unique
+  id        Int                 @id @default(autoincrement())
+  nombre    String              @unique
   orden     Int
   programas ProgramaEducativo[]
 }
 
 model ProgramaEducativo {
-  id              Int          @id @default(autoincrement())
-  nombre          String
-  cuatrimestreId  Int
-  cuatrimestre    Cuatrimestre @relation(fields: [cuatrimestreId], references: [id])
-  parciales       Parcial[]
+  id             Int          @id @default(autoincrement())
+  nombre         String
+  cuatrimestreId Int
+  cuatrimestre   Cuatrimestre @relation(fields: [cuatrimestreId], references: [id])
+  parciales      Parcial[]
 
   @@unique([cuatrimestreId, nombre])
 }

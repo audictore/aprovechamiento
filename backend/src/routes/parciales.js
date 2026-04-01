@@ -129,6 +129,9 @@ router.post('/:parcialId/upload-pdfs', upload.array('files', 20), async (req, re
     const parcialId  = Number(req.params.parcialId)
     const numParcial = Number(req.body.numParcial)
 
+    console.log('Upload PDFs - parcialId:', parcialId, 'numParcial:', numParcial)
+    console.log('Archivos recibidos:', req.files?.length)
+
     if (!req.files?.length) {
       return res.status(400).json({ error: 'No se recibieron archivos' })
     }
@@ -138,6 +141,7 @@ router.post('/:parcialId/upload-pdfs', upload.array('files', 20), async (req, re
     for (const file of req.files) {
       try {
         const resultado = await parsearPDF(file.buffer, numParcial)
+        console.log('Resultado PDF:', file.originalname, '->', resultado)
 
         if (!resultado) {
           resultados.push({ archivo: file.originalname, error: 'No se pudo leer el grupo' })
@@ -148,8 +152,12 @@ router.post('/:parcialId/upload-pdfs', upload.array('files', 20), async (req, re
           where: { parcialId, nombre: resultado.grupo }
         })
 
+        console.log('Grupo encontrado en BD:', grupo?.nombre ?? 'NO ENCONTRADO')
+
         if (!grupo) {
-          resultados.push({ archivo: file.originalname, error: `Grupo ${resultado.grupo} no encontrado en este parcial` })
+          const todosGrupos = await prisma.grupo.findMany({ where: { parcialId } })
+          console.log('Grupos en BD:', todosGrupos.map(g => g.nombre))
+          resultados.push({ archivo: file.originalname, error: `Grupo ${resultado.grupo} no encontrado` })
           continue
         }
 
@@ -165,6 +173,7 @@ router.post('/:parcialId/upload-pdfs', upload.array('files', 20), async (req, re
           alumnos:    resultado.totalAlumnos
         })
       } catch (e) {
+        console.log('Error procesando PDF:', file.originalname, e.message)
         resultados.push({ archivo: file.originalname, error: e.message })
       }
     }

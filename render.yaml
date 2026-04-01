@@ -1,0 +1,50 @@
+services:
+  - type: web
+    name: aprovechamiento-api
+    runtime: node
+    rootDir: backend
+    buildCommand: chmod +x build.sh && ./build.sh
+    startCommand: npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_URL
+        fromDatabase:
+          name: aprovechamiento-db
+          property: connectionString
+      - key: JWT_SECRET
+        value: upmh_clave_super_secreta_2026
+      - key: ADMIN_PASS
+        value: admin
+      - key: SMTP_HOST
+        value: smtp.gmail.com
+      - key: SMTP_PORT
+        value: "587"
+      - key: SMTP_USER
+        sync: false
+      - key: SMTP_PASS
+        sync: false
+
+  - type: web
+    name: aprovechamiento-web
+    runtime: static
+    rootDir: frontend
+    buildCommand: npm install && npm run build
+    staticPublishPath: dist
+    envVars:
+      - key: VITE_API_URL
+        sync: false
+
+databases:
+  - name: aprovechamiento-db
+    plan: free
+```
+
+Guarda con `Ctrl + S`.
+
+Ahora sube todo a GitHub:
+```
+cd "C:\Users\Alonzo Flores\Documents\programacion\aprovechamiento"
+git add .
+git commit -m "deploy config render"
+git push origin master
