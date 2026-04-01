@@ -1,12 +1,12 @@
 import { useState, useEffect, useRef } from 'react'
-import { Bar } from 'react-chartjs-2'
+import { Bar, Line } from 'react-chartjs-2'
 import {
   Chart, CategoryScale, LinearScale,
-  BarElement, Tooltip, Legend
+  BarElement, LineElement, PointElement, Tooltip, Legend
 } from 'chart.js'
-import { getReporte, uploadExcel } from '../api.js'
+import { getReporte, uploadExcel, getTendencia } from '../api.js'
 
-Chart.register(CategoryScale, LinearScale, BarElement, Tooltip, Legend)
+Chart.register(CategoryScale, LinearScale, BarElement, LineElement, PointElement, Tooltip, Legend)
 
 const COLORS  = ['#1D9E75','#378ADD','#BA7517','#D85A30','#7F77DD','#D4537E','#639922','#985C3C']
 const barOpts = (min = 7) => ({
@@ -18,6 +18,7 @@ const barOpts = (min = 7) => ({
 
 export default function Dashboard({ seleccion, onReload, esAdmin }) {
   const [reporte,   setReporte]   = useState(null)
+  const [tendencia, setTendencia] = useState(null)
   const [loading,   setLoading]   = useState(true)
   const [drag,      setDrag]      = useState(false)
   const [uploading, setUploading] = useState(false)
@@ -26,9 +27,17 @@ export default function Dashboard({ seleccion, onReload, esAdmin }) {
   useEffect(() => {
     setLoading(true)
     setReporte(null)
-    getReporte(seleccion.parcial.id)
-      .then(r  => setReporte(r.data))
-      .catch(() => setReporte(null))
+    setTendencia(null)
+
+    Promise.all([
+      getReporte(seleccion.parcial.id),
+      getTendencia(seleccion.cuatri.id, seleccion.programa.id)
+    ])
+      .then(([r, t]) => {
+        setReporte(r.data)
+        setTendencia(t.data)
+      })
+      .catch(() => {})
       .finally(() => setLoading(false))
   }, [seleccion.parcial.id])
 
@@ -37,14 +46,13 @@ export default function Dashboard({ seleccion, onReload, esAdmin }) {
     setUploading(true)
     try {
       const numParcial = seleccion.parcial.numero || seleccion.parcial.id
-      await uploadExcel(
-        seleccion.cuatri.id,
-        seleccion.programa.nombre,
-        numParcial,
-        file
-      )
-      const r = await getReporte(seleccion.parcial.id)
+      await uploadExcel(seleccion.cuatri.id, seleccion.programa.nombre, numParcial, file)
+      const [r, t] = await Promise.all([
+        getReporte(seleccion.parcial.id),
+        getTendencia(seleccion.cuatri.id, seleccion.programa.id)
+      ])
       setReporte(r.data)
+      setTendencia(t.data)
       onReload()
     } catch (e) {
       alert('Error al procesar el archivo: ' + (e.response?.data?.error ?? e.message))
@@ -89,10 +97,8 @@ export default function Dashboard({ seleccion, onReload, esAdmin }) {
   const grupoLabels = grupos.map(g => g.nombre)
   const grupoAvgs   = grupos.map(g => +grupoConProm(g).toFixed(2))
 
-  // Grupos en riesgo (promedio < 8)
   const gruposEnRiesgo = grupos.filter(g => grupoConProm(g) < 8)
 
-  // Materias en riesgo (promedio < 8 en al menos un grupo)
   const matMap = {}
   grupos.forEach(g => g.materias.forEach(m => {
     if (m.promedio > 0) {
@@ -100,6 +106,7 @@ export default function Dashboard({ seleccion, onReload, esAdmin }) {
       matMap[m.nombre].push(m.promedio)
     }
   }))
+
   const materiasEnRiesgo = Object.entries(matMap)
     .map(([nombre, promedios]) => ({
       nombre,
@@ -110,6 +117,27 @@ export default function Dashboard({ seleccion, onReload, esAdmin }) {
 
   const matNombres = Object.keys(matMap)
   const matAvgs    = matNombres.map(n => +(matMap[n].reduce((a, b) => a + b, 0) / matMap[n].length).toFixed(2))
+
+  // Datos para gráfica de tendencia
+  const nombresGrupos = tendencia
+    ? [...new Set(tendencia.flatMap(p => p.grupos.map(g => g.nombre)))].sort()
+    : []
+
+  const lineData = {
+    labels: tendencia ? tendencia.map(p => p.label) : [],
+    datasets: nombresGrupos.map((nombre, idx) => ({
+      label: nombre,
+      data: tendencia ? tendencia.map(p => {
+        const g = p.grupos.find(g => g.nombre === nombre)
+        return g ? g.promedio : null
+      }) : [],
+      borderColor:     COLORS[idx % COLORS.length],
+      backgroundColor: COLORS[idx % COLORS.length] + '33',
+      tension:         0.3,
+      pointRadius:     5,
+      pointHoverRadius: 7
+    }))
+  }
 
   return (
     <>
@@ -152,7 +180,9 @@ export default function Dashboard({ seleccion, onReload, esAdmin }) {
           <div className="msub">
             {materiasEnRiesgo.length === 0
               ? 'todas por encima de 8'
-              : `${materiasEnRiesgo[0].nombre.slice(0,20)}… y más`}
+              : materiasEnRiesgo.length === 1
+                ? materiasEnRiesgo[0].nombre.slice(0, 22)
+                : `${materiasEnRiesgo[0].nombre.slice(0, 18)}… y ${materiasEnRiesgo.length - 1} más`}
           </div>
         </div>
       </div>
@@ -171,10 +201,12 @@ export default function Dashboard({ seleccion, onReload, esAdmin }) {
           <h3>Materias en riesgo (prom. {'<'} 8)</h3>
           <div className="chart-wrap">
             {materiasEnRiesgo.length === 0
-              ? <div style={{ display:'flex', alignItems:'center', justifyContent:'center', height:'100%', color:'#1D9E75', fontWeight:600 }}>Todas las materias están bien ✓</div>
+              ? <div style={{ display:'flex', alignItems:'center', justifyContent:'center', height:'100%', color:'#1D9E75', fontWeight:600 }}>
+                  Todas las materias están bien ✓
+                </div>
               : <Bar
                   data={{
-                    labels: materiasEnRiesgo.map(m => m.nombre.length > 25 ? m.nombre.slice(0,25)+'…' : m.nombre),
+                    labels:   materiasEnRiesgo.map(m => m.nombre.length > 25 ? m.nombre.slice(0,25)+'…' : m.nombre),
                     datasets: [{ data: materiasEnRiesgo.map(m => +m.promedio.toFixed(2)), backgroundColor: '#D85A30', borderRadius: 5 }]
                   }}
                   options={{ ...barOpts(6), indexAxis: 'y', scales: { x: { min: 6, max: 10 } } }}
@@ -199,6 +231,25 @@ export default function Dashboard({ seleccion, onReload, esAdmin }) {
         </div>
       </div>
 
+      {tendencia && tendencia.length > 1 && (
+        <div className="chart-grid single">
+          <div className="chart-card">
+            <h3>Evolución de promedio por grupo — entre parciales</h3>
+            <div className="chart-wrap" style={{ height: 280 }}>
+              <Line
+                data={lineData}
+                options={{
+                  responsive: true,
+                  maintainAspectRatio: false,
+                  plugins: { legend: { display: true, position: 'bottom' } },
+                  scales: { y: { min: 7, max: 10, ticks: { font: { size: 11 } } } }
+                }}
+              />
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="tcard">
         <table>
           <thead>
@@ -206,7 +257,7 @@ export default function Dashboard({ seleccion, onReload, esAdmin }) {
           </thead>
           <tbody>
             {grupos.map(g => {
-              const avg = grupoConProm(g).toFixed(2)
+              const avg      = grupoConProm(g).toFixed(2)
               const enRiesgo = +avg < 8
               return (
                 <tr key={g.id}>
@@ -225,25 +276,6 @@ export default function Dashboard({ seleccion, onReload, esAdmin }) {
           </tbody>
         </table>
       </div>
-
-      {materiasEnRiesgo.length > 0 && (
-        <div className="tcard" style={{ marginTop: 16 }}>
-          <table>
-            <thead>
-              <tr><th>Materia en riesgo</th><th>Promedio general</th><th>Estado</th></tr>
-            </thead>
-            <tbody>
-              {materiasEnRiesgo.map((m, i) => (
-                <tr key={i}>
-                  <td><strong>{m.nombre}</strong></td>
-                  <td><strong style={{ color: '#A32D2D' }}>{m.promedio.toFixed(2)}</strong></td>
-                  <td><span className="badge badge-bad">Atención requerida</span></td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
     </>
   )
 }

@@ -57,4 +57,7 @@ export const eliminarPrograma     = (cuatriId, programaId)        => api.delete(
 export const eliminarParcial      = (cuatriId, programaId, parcialId) => api.delete(`/cuatrimestres/${cuatriId}/programas/${programaId}/parciales/${parcialId}`)
 export const limpiarParcial       = (parcialId)                   => api.delete(`/parciales/${parcialId}/datos`)
 
+export const getTendencia = (cuatriId, programaId) =>
+  api.get(`/cuatrimestres/${cuatriId}/programas/${programaId}/tendencia`)
+
 export default api

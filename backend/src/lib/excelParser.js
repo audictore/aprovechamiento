@@ -5,7 +5,6 @@ export function parsearReporte(buffer, numParcial = 1) {
   const ws   = wb.Sheets[wb.SheetNames[0]]
   const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' })
 
-  // numParcial 1 → col 2, parcial 2 → col 3, parcial 3 → col 4
   const colCorte = numParcial + 1
 
   const grupos = []
@@ -15,16 +14,20 @@ export function parsearReporte(buffer, numParcial = 1) {
     const row  = rows[i].map(c => String(c ?? '').trim())
     const col0 = row[0] || ''
 
-    // Detecta "1 - A", "4 - B", "10 - C", etc.
     const grupoMatch = col0.match(/^(\d+)\s*-\s*([A-Z])$/)
 
     if (grupoMatch) {
       const nombreGrupo = `${grupoMatch[1]}-${grupoMatch[2]}`
-      const filaTexto   = row.join(' ')
-      const tutorMatch  = filaTexto.match(/Tutor:\s*([^,\n(]+)/i)
-      const bajasMatch  = filaTexto.match(/Bajas:\s*(\d+)/i)
-      const tutor = tutorMatch ? tutorMatch[1].trim() : ''
-      const bajas = bajasMatch ? parseInt(bajasMatch[1]) : 0
+
+      // El tutor está en col1, las bajas en col6
+      const col1 = row[1] || ''
+      const col6 = row[6] || ''
+
+      const tutorMatch = col1.match(/Tutor:\s*(.+)/i)
+      const tutor      = tutorMatch ? tutorMatch[1].trim() : col1.trim()
+
+      const bajasMatch = col6.match(/Bajas:\s*(\d+)/i)
+      const bajas      = bajasMatch ? parseInt(bajasMatch[1]) : 0
 
       i += 2
 
@@ -38,8 +41,6 @@ export function parsearReporte(buffer, numParcial = 1) {
         if (!matNombre || matNombre.match(/^\d+\s*-\s*[A-Z]$/)) break
 
         const docente  = r[1] && r[1].toLowerCase() !== 'no disponible' ? r[1] : ''
-
-        // Toma solo el corte seleccionado
         const promedio = toFloat(r[colCorte])
 
         const { alumnos, reprobados } = parsearAlumnos(r[6] || '')

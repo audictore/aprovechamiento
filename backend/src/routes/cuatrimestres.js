@@ -85,4 +85,31 @@ router.delete('/:cuatriId/programas/:programaId/parciales/:parcialId', async (re
   }
 })
 
+router.get('/:cuatriId/programas/:programaId/tendencia', async (req, res, next) => {
+  try {
+    const parciales = await prisma.parcial.findMany({
+      where:   { programaId: Number(req.params.programaId) },
+      orderBy: { numero: 'asc' },
+      include: {
+        grupos: {
+          include: { materias: true }
+        }
+      }
+    })
+
+    const resultado = parciales.map(p => {
+      const grupos = p.grupos.map(g => {
+        const mats = g.materias.filter(m => m.promedio > 0)
+        const prom = mats.length
+          ? mats.reduce((s, m) => s + m.promedio, 0) / mats.length
+          : 0
+        return { nombre: g.nombre, promedio: +prom.toFixed(2) }
+      })
+      return { parcialId: p.id, label: p.label, numero: p.numero, grupos }
+    })
+
+    res.json(resultado)
+  } catch (e) { next(e) }
+})
+
 export default router
