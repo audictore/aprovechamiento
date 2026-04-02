@@ -3,7 +3,7 @@ services:
     name: aprovechamiento-api
     runtime: node
     rootDir: backend
-    buildCommand: chmod +x build.sh && ./build.sh
+    buildCommand: chmod +x build.sh && bash build.sh
     startCommand: npm start
     envVars:
       - key: NODE_ENV
@@ -21,7 +21,7 @@ services:
       - key: SMTP_PORT
         value: "587"
       - key: SMTP_USER
-        sync: false
+        value: floresalonzo117@gmail.com
       - key: SMTP_PASS
         sync: false
 
@@ -38,13 +38,3 @@ services:
 databases:
   - name: aprovechamiento-db
     plan: free
-```
-
-Guarda con `Ctrl + S`.
-
-Ahora sube todo a GitHub:
-```
-cd "C:\Users\Alonzo Flores\Documents\programacion\aprovechamiento"
-git add .
-git commit -m "deploy config render"
-git push origin master
