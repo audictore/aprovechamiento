@@ -21,8 +21,8 @@ export default function Docentes({ esAdmin }) {
   const [cuatrimestres, setCuatrimestres] = useState([])
   const [programas,     setProgramas]     = useState([])
   const [cuatriSel,     setCuatriSel]     = useState('')
-  const [parcialesSel,  setParcialesSel]  = useState({}) // { parcialId: true/false }
-  const [reportes,      setReportes]      = useState({}) // { parcialId: reporte }
+  const [parcialesSel,  setParcialesSel]  = useState({})
+  const [reportes,      setReportes]      = useState({})
   const [cargando,      setCargando]      = useState(false)
   const [mostrarTodos,  setMostrarTodos]  = useState(false)
   const { addToast }                      = useToast()
@@ -59,7 +59,6 @@ export default function Docentes({ esAdmin }) {
     }
   }
 
-  // Consolidar docentes de todos los parciales seleccionados
   const docentesDelParcial = (() => {
     const ids = new Set()
     Object.entries(parcialesSel).forEach(([parcialId, sel]) => {
@@ -71,7 +70,6 @@ export default function Docentes({ esAdmin }) {
     return docentes.filter(d => ids.has(d.id))
   })()
 
-  // Auto-seleccionar docentes con correo cuando cambian los parciales
   useEffect(() => {
     if (docentesDelParcial.length === 0) return
     const m = {}
@@ -104,25 +102,21 @@ export default function Docentes({ esAdmin }) {
 
   const seleccionados = docentes.filter(d => checks[d.id])
   const sinCorreo     = seleccionados.filter(d => !d.email)
+  const parcialIds    = Object.entries(parcialesSel).filter(([, v]) => v).map(([k]) => Number(k))
 
   function infoReporte() {
-    const parcialIds = Object.entries(parcialesSel).filter(([, v]) => v).map(([k]) => Number(k))
     if (!parcialIds.length) return ''
-
     let bloques = []
     for (const pid of parcialIds) {
       const rep = reportes[pid]
       if (!rep) continue
-
       const grupoConProm = g => {
         const mats = g.materias.filter(m => m.promedio > 0)
         return mats.length ? mats.reduce((s, m) => s + m.promedio, 0) / mats.length : 0
       }
-
       const avgGeneral = rep.grupos.length
         ? (rep.grupos.reduce((s, g) => s + grupoConProm(g), 0) / rep.grupos.length).toFixed(2)
         : '—'
-
       const matMap = {}
       rep.grupos.forEach(g => g.materias.forEach(m => {
         if (m.promedio > 0) {
@@ -130,31 +124,26 @@ export default function Docentes({ esAdmin }) {
           matMap[m.nombre].push(m.promedio)
         }
       }))
-
       const materiasEnRiesgo = Object.entries(matMap)
         .map(([nombre, promedios]) => ({ nombre, promedio: promedios.reduce((a, b) => a + b, 0) / promedios.length }))
         .filter(m => m.promedio < 8)
         .sort((a, b) => a.promedio - b.promedio)
-
       const lineasGrupos = rep.grupos.map(g =>
         `  • Grupo ${g.nombre}: Promedio ${grupoConProm(g).toFixed(2)}`
       ).join('\n')
-
       const lineasRiesgo = materiasEnRiesgo.length
         ? '\n  Materias en riesgo:\n' + materiasEnRiesgo.map(m => `    - ${m.nombre}: ${m.promedio.toFixed(2)}`).join('\n')
         : '\n  Todas las materias por encima de 8.'
-
       bloques.push(`[ ${rep.programa} — ${rep.parcialLabel} ]\nPromedio general: ${avgGeneral}\n\nResultados por grupo:\n${lineasGrupos}${lineasRiesgo}`)
     }
-
     return bloques.join('\n\n' + '─'.repeat(40) + '\n\n')
   }
 
   function textoPreview() {
-    const doc  = seleccionados[0]
+    const doc = seleccionados[0]
     if (!doc) return 'Selecciona al menos un docente para ver la vista previa.'
-    const info  = infoReporte()
-    const encab = extra ? `\n${extra}\n` : ''
+    const info   = infoReporte()
+    const encab  = extra ? `\n${extra}\n` : ''
     const bloque = info ? `\n\n${info}\n` : ''
     return `Estimado(a) ${doc.nombre},\n${encab}${bloque}\nAtentamente,\nCoordinación Académica — UPMH`
   }
@@ -173,7 +162,8 @@ export default function Docentes({ esAdmin }) {
       const { data } = await enviarCorreosDirecto({
         asunto,
         mensaje,
-        destinatarios: seleccionados.map(d => ({ docenteId: d.id, nombre: d.nombre }))
+        destinatarios: seleccionados.map(d => ({ docenteId: d.id, nombre: d.nombre })),
+        parcialIds
       })
       addToast(
         `${data.enviados} correo(s) enviado(s)${data.errores.length ? ` · ${data.errores.length} error(es)` : ''}`,
@@ -192,7 +182,6 @@ export default function Docentes({ esAdmin }) {
         <h2 style={{ fontSize: 16, fontWeight: 700 }}>Docentes y correos</h2>
       </div>
 
-      {/* Selector de cuatrimestre */}
       <div className="tcard" style={{ padding:16, marginBottom:16 }}>
         <div className="field" style={{ margin:0, maxWidth:300 }}>
           <label>Cuatrimestre</label>
@@ -244,7 +233,6 @@ export default function Docentes({ esAdmin }) {
         )}
       </div>
 
-      {/* Barra de selección */}
       <div className="sel-bar" style={{ marginBottom: 12 }}>
         <input
           type="text"
@@ -267,13 +255,10 @@ export default function Docentes({ esAdmin }) {
         </span>
       </div>
 
-      {/* Lista de docentes */}
       <div className="doc-list">
         {docentesMostrados.length === 0 && (
           <div style={{ padding:20, color:'#aaa', textAlign:'center' }}>
-            {Object.values(parcialesSel).some(Boolean)
-              ? 'No hay docentes en los parciales seleccionados'
-              : 'Selecciona un cuatrimestre y marca los parciales a incluir'}
+            {parcialIds.length ? 'No hay docentes en los parciales seleccionados' : 'Selecciona un cuatrimestre y marca los parciales a incluir'}
           </div>
         )}
 
@@ -319,7 +304,6 @@ export default function Docentes({ esAdmin }) {
         })}
       </div>
 
-      {/* Redactar y enviar */}
       {esAdmin && (
         <div className="compose">
           <h3>Redactar y enviar</h3>
