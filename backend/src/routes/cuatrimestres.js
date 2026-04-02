@@ -43,9 +43,73 @@ router.get('/:id/programas', async (req, res, next) => {
     const programas = await prisma.programaEducativo.findMany({
       where:   { cuatrimestreId: Number(req.params.id) },
       orderBy: { nombre: 'asc' },
-      include: { parciales: { orderBy: { numero: 'asc' } } }
+      include: {
+        parciales: {
+          orderBy: { numero: 'asc' },
+          include: {
+            grupos: {
+              include: { materias: true }
+            }
+          }
+        }
+      }
     })
-    res.json(programas)
+
+    const resultado = programas.map(prog => ({
+      ...prog,
+      parciales: prog.parciales.map(p => {
+        const grupos = p.grupos
+        let sumaGrupos  = 0
+        let countGrupos = 0
+
+        grupos.forEach(g => {
+          const mats = g.materias.filter(m => m.promedio > 0)
+          if (mats.length > 0) {
+            const promGrupo = mats.reduce((s, m) => s + m.promedio, 0) / mats.length
+            sumaGrupos += promGrupo
+            countGrupos++
+          }
+        })
+
+        const promedio = countGrupos > 0 ? +(sumaGrupos / countGrupos).toFixed(2) : null
+
+        return {
+          id:      p.id,
+          numero:  p.numero,
+          label:   p.label,
+          promedio
+        }
+      })
+    }))
+
+    res.json(resultado)
+  } catch (e) { next(e) }
+})
+
+router.get('/:cuatriId/programas/:programaId/tendencia', async (req, res, next) => {
+  try {
+    const parciales = await prisma.parcial.findMany({
+      where:   { programaId: Number(req.params.programaId) },
+      orderBy: { numero: 'asc' },
+      include: {
+        grupos: {
+          include: { materias: true }
+        }
+      }
+    })
+
+    const resultado = parciales.map(p => {
+      const grupos = p.grupos.map(g => {
+        const mats = g.materias.filter(m => m.promedio > 0)
+        const prom = mats.length
+          ? mats.reduce((s, m) => s + m.promedio, 0) / mats.length
+          : 0
+        return { nombre: g.nombre, promedio: +prom.toFixed(2) }
+      })
+      return { parcialId: p.id, label: p.label, numero: p.numero, grupos }
+    })
+
+    res.json(resultado)
   } catch (e) { next(e) }
 })
 
@@ -83,33 +147,6 @@ router.delete('/:cuatriId/programas/:programaId/parciales/:parcialId', async (re
     if (e.code === 'P2025') return res.status(404).json({ error: 'No encontrado' })
     next(e)
   }
-})
-
-router.get('/:cuatriId/programas/:programaId/tendencia', async (req, res, next) => {
-  try {
-    const parciales = await prisma.parcial.findMany({
-      where:   { programaId: Number(req.params.programaId) },
-      orderBy: { numero: 'asc' },
-      include: {
-        grupos: {
-          include: { materias: true }
-        }
-      }
-    })
-
-    const resultado = parciales.map(p => {
-      const grupos = p.grupos.map(g => {
-        const mats = g.materias.filter(m => m.promedio > 0)
-        const prom = mats.length
-          ? mats.reduce((s, m) => s + m.promedio, 0) / mats.length
-          : 0
-        return { nombre: g.nombre, promedio: +prom.toFixed(2) }
-      })
-      return { parcialId: p.id, label: p.label, numero: p.numero, grupos }
-    })
-
-    res.json(resultado)
-  } catch (e) { next(e) }
 })
 
 export default router

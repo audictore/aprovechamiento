@@ -5,6 +5,7 @@ import {
   BarElement, LineElement, PointElement, Tooltip, Legend
 } from 'chart.js'
 import { getReporte, uploadExcel, getTendencia } from '../api.js'
+import { useToast } from '../components/Toast.jsx'
 
 Chart.register(CategoryScale, LinearScale, BarElement, LineElement, PointElement, Tooltip, Legend)
 
@@ -17,17 +18,20 @@ const barOpts = (min = 7) => ({
 })
 
 export default function Dashboard({ seleccion, onReload, esAdmin }) {
-  const [reporte,   setReporte]   = useState(null)
-  const [tendencia, setTendencia] = useState(null)
-  const [loading,   setLoading]   = useState(true)
-  const [drag,      setDrag]      = useState(false)
-  const [uploading, setUploading] = useState(false)
-  const fileRef = useRef()
+  const [reporte,     setReporte]     = useState(null)
+  const [tendencia,   setTendencia]   = useState(null)
+  const [loading,     setLoading]     = useState(true)
+  const [drag,        setDrag]        = useState(false)
+  const [uploading,   setUploading]   = useState(false)
+  const [grupoFiltro, setGrupoFiltro] = useState('todos')
+  const fileRef      = useRef()
+  const { addToast } = useToast()
 
   useEffect(() => {
     setLoading(true)
     setReporte(null)
     setTendencia(null)
+    setGrupoFiltro('todos')
 
     Promise.all([
       getReporte(seleccion.parcial.id),
@@ -54,10 +58,48 @@ export default function Dashboard({ seleccion, onReload, esAdmin }) {
       setReporte(r.data)
       setTendencia(t.data)
       onReload()
+      addToast('Excel importado correctamente', 'success')
     } catch (e) {
-      alert('Error al procesar el archivo: ' + (e.response?.data?.error ?? e.message))
+      addToast('Error al procesar el archivo: ' + (e.response?.data?.error ?? e.message), 'error')
     } finally {
       setUploading(false)
+    }
+  }
+
+  async function exportarExcel() {
+    try {
+      const XLSX = await import('xlsx')
+      const wb   = XLSX.utils.book_new()
+
+      const resumenData = [
+        ['Grupo', 'Tutor', 'Alumnos', 'Promedio', 'Estado'],
+        ...gruposFiltrados.map(g => {
+          const avg = grupoConProm(g).toFixed(2)
+          return [g.nombre, g.tutor, g.alumnos, +avg, +avg < 8 ? 'En riesgo' : 'Bien']
+        })
+      ]
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(resumenData), 'Resumen por grupo')
+
+      const matData = [
+        ['Materia', 'Promedio general', 'Estado'],
+        ...matNombres.map((n, i) => [n, matAvgs[i], matAvgs[i] < 8 ? 'En riesgo' : 'Bien'])
+      ]
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(matData), 'Promedio por materia')
+
+      const detalleData = [
+        ['Grupo', 'Materia', 'Docente', 'Promedio'],
+        ...gruposFiltrados.flatMap(g =>
+          g.materias
+            .filter(m => m.promedio > 0)
+            .map(m => [g.nombre, m.nombre, m.docenteNombre || '—', +m.promedio.toFixed(2)])
+        )
+      ]
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(detalleData), 'Detalle')
+
+      XLSX.writeFile(wb, `Aprovechamiento_${seleccion.parcial.label}.xlsx`)
+      addToast('Reporte exportado correctamente', 'success')
+    } catch (e) {
+      addToast('Error al exportar: ' + e.message, 'error')
     }
   }
 
@@ -84,23 +126,25 @@ export default function Dashboard({ seleccion, onReload, esAdmin }) {
     )
   }
 
-  const grupos     = reporte.grupos
-  const totAlumnos = grupos.reduce((s, g) => s + g.alumnos, 0)
+  const grupos          = reporte.grupos
+  const gruposFiltrados = grupoFiltro === 'todos' ? grupos : grupos.filter(g => g.nombre === grupoFiltro)
 
   const grupoConProm = g => {
     const mats = g.materias.filter(m => m.promedio > 0)
     return mats.length ? mats.reduce((s, m) => s + m.promedio, 0) / mats.length : 0
   }
 
-  const avgGeneral  = (grupos.reduce((s, g) => s + grupoConProm(g), 0) / grupos.length).toFixed(2)
-  const mejorGrupo  = [...grupos].sort((a, b) => grupoConProm(b) - grupoConProm(a))[0]
-  const grupoLabels = grupos.map(g => g.nombre)
-  const grupoAvgs   = grupos.map(g => +grupoConProm(g).toFixed(2))
+  const totAlumnos = gruposFiltrados.reduce((s, g) => s + g.alumnos, 0)
+  const avgGeneral = gruposFiltrados.length
+    ? (gruposFiltrados.reduce((s, g) => s + grupoConProm(g), 0) / gruposFiltrados.length).toFixed(2)
+    : '—'
+  const grupoLabels = gruposFiltrados.map(g => g.nombre)
+  const grupoAvgs   = gruposFiltrados.map(g => +grupoConProm(g).toFixed(2))
 
-  const gruposEnRiesgo = grupos.filter(g => grupoConProm(g) < 8)
+  const gruposEnRiesgo = gruposFiltrados.filter(g => grupoConProm(g) < 8)
 
   const matMap = {}
-  grupos.forEach(g => g.materias.forEach(m => {
+  gruposFiltrados.forEach(g => g.materias.forEach(m => {
     if (m.promedio > 0) {
       if (!matMap[m.nombre]) matMap[m.nombre] = []
       matMap[m.nombre].push(m.promedio)
@@ -118,43 +162,69 @@ export default function Dashboard({ seleccion, onReload, esAdmin }) {
   const matNombres = Object.keys(matMap)
   const matAvgs    = matNombres.map(n => +(matMap[n].reduce((a, b) => a + b, 0) / matMap[n].length).toFixed(2))
 
-  // Datos para gráfica de tendencia
   const nombresGrupos = tendencia
     ? [...new Set(tendencia.flatMap(p => p.grupos.map(g => g.nombre)))].sort()
     : []
 
+  const gruposLineaFiltrados = grupoFiltro === 'todos'
+    ? nombresGrupos
+    : nombresGrupos.filter(n => n === grupoFiltro)
+
   const lineData = {
     labels: tendencia ? tendencia.map(p => p.label) : [],
-    datasets: nombresGrupos.map((nombre, idx) => ({
-      label: nombre,
-      data: tendencia ? tendencia.map(p => {
-        const g = p.grupos.find(g => g.nombre === nombre)
-        return g ? g.promedio : null
-      }) : [],
-      borderColor:     COLORS[idx % COLORS.length],
-      backgroundColor: COLORS[idx % COLORS.length] + '33',
-      tension:         0.3,
-      pointRadius:     5,
+    datasets: gruposLineaFiltrados.map((nombre, idx) => ({
+      label:            nombre,
+      data:             tendencia ? tendencia.map(p => { const g = p.grupos.find(g => g.nombre === nombre); return g ? g.promedio : null }) : [],
+      borderColor:      COLORS[idx % COLORS.length],
+      backgroundColor:  COLORS[idx % COLORS.length] + '33',
+      tension:          0.3,
+      pointRadius:      5,
       pointHoverRadius: 7
     }))
   }
 
   return (
     <>
-      {esAdmin && (
-        <div className="reimport-btn">
-          <button className="btn" style={{ fontSize: 11 }} onClick={() => fileRef.current.click()}>
-            Reimportar Excel
+      <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:8, flexWrap:'wrap', gap:8 }}>
+        <div style={{ display:'flex', gap:6, flexWrap:'wrap' }}>
+          <button
+            className={`btn ${grupoFiltro === 'todos' ? 'btn-primary' : ''}`}
+            style={{ fontSize:11 }}
+            onClick={() => setGrupoFiltro('todos')}
+          >
+            Todos los grupos
           </button>
-          <input ref={fileRef} type="file" accept=".xlsx,.xls" hidden onChange={e => handleFile(e.target.files[0])} />
+          {grupos.map(g => (
+            <button
+              key={g.nombre}
+              className={`btn ${grupoFiltro === g.nombre ? 'btn-primary' : ''}`}
+              style={{ fontSize:11 }}
+              onClick={() => setGrupoFiltro(g.nombre)}
+            >
+              {g.nombre}
+            </button>
+          ))}
         </div>
-      )}
+        <div style={{ display:'flex', gap:8 }}>
+          <button className="btn btn-primary" style={{ fontSize:11 }} onClick={exportarExcel}>
+            ↓ Exportar Excel
+          </button>
+          {esAdmin && (
+            <>
+              <button className="btn" style={{ fontSize:11 }} onClick={() => fileRef.current.click()}>
+                Reimportar Excel
+              </button>
+              <input ref={fileRef} type="file" accept=".xlsx,.xls" hidden onChange={e => handleFile(e.target.files[0])} />
+            </>
+          )}
+        </div>
+      </div>
 
       <div className="metrics">
         <div className="metric">
           <div className="mlabel">Total alumnos</div>
           <div className="mval">{totAlumnos}</div>
-          <div className="msub">{grupos.length} grupos</div>
+          <div className="msub">{gruposFiltrados.length} grupos</div>
         </div>
         <div className="metric">
           <div className="mlabel">Promedio general</div>
@@ -256,7 +326,7 @@ export default function Dashboard({ seleccion, onReload, esAdmin }) {
             <tr><th>Grupo</th><th>Tutor</th><th>Alumnos</th><th>Promedio</th><th>Estado</th></tr>
           </thead>
           <tbody>
-            {grupos.map(g => {
+            {gruposFiltrados.map(g => {
               const avg      = grupoConProm(g).toFixed(2)
               const enRiesgo = +avg < 8
               return (

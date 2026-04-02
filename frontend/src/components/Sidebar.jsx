@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { crearCuatrimestre, uploadPDFs, eliminarCuatrimestre, eliminarPrograma, eliminarParcial, limpiarParcial } from '../api.js'
+import { useToast } from './Toast.jsx'
 import axios from 'axios'
 
 const api = axios.create({ baseURL: import.meta.env.VITE_API_URL ?? '/api' })
@@ -16,7 +17,23 @@ const PROGRAMAS = [
   'Licenciatura en Administración y Gestión Empresarial'
 ]
 
-export default function Sidebar({ cuatrimestres, seleccion, onSelect, onReload, esAdmin, onLogout }) {
+function ModalConfirm({ mensaje, onAceptar, onCancelar }) {
+  return (
+    <div className="modal-bg" onClick={onCancelar}>
+      <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 360 }}>
+        <p style={{ marginBottom: 20, fontSize: 14 }}>{mensaje}</p>
+        <div className="modal-btns">
+          <button className="btn" onClick={onCancelar}>Cancelar</button>
+          <button className="btn" style={{ background:'#A32D2D', color:'#fff', borderColor:'#A32D2D' }} onClick={onAceptar}>
+            Eliminar
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+export default function Sidebar({ cuatrimestres, seleccion, onSelect, onReload, esAdmin, onLogout, vistaDocentes, onVerDocentes }) {
   const [abiertos,     setAbiertos]     = useState({})
   const [programasMap, setProgramasMap] = useState({})
   const [modal,        setModal]        = useState(false)
@@ -24,6 +41,8 @@ export default function Sidebar({ cuatrimestres, seleccion, onSelect, onReload, 
   const [nombre,       setNombre]       = useState('')
   const [uploading,    setUploading]    = useState(false)
   const [uploadForm,   setUploadForm]   = useState({ programa: PROGRAMAS[0], numParcial: '1' })
+  const [confirm,      setConfirm]      = useState(null)
+  const { addToast }                   = useToast()
 
   async function toggleCuatri(cuatri) {
     const id = cuatri.id
@@ -42,7 +61,7 @@ export default function Sidebar({ cuatrimestres, seleccion, onSelect, onReload, 
 
   async function handleCrear() {
     const n = nombre.trim()
-    if (!n) return alert('Escribe el nombre del cuatrimestre')
+    if (!n) { addToast('Escribe el nombre del cuatrimestre', 'warning'); return }
     const year = (n.match(/\d{4}/) || ['9999'])[0]
     const mes  = n.toLowerCase().includes('mayo') ? 5
                : n.toLowerCase().includes('sep')  ? 9 : 1
@@ -50,6 +69,7 @@ export default function Sidebar({ cuatrimestres, seleccion, onSelect, onReload, 
     setModal(false)
     setNombre('')
     onReload()
+    addToast('Cuatrimestre creado correctamente', 'success')
   }
 
   async function handleUploadExcel(file) {
@@ -62,8 +82,9 @@ export default function Sidebar({ cuatrimestres, seleccion, onSelect, onReload, 
       await api.post(`/parciales/${modalUpload.id}/${prog}/${uploadForm.numParcial}/upload`, fd)
       await refreshProgramas(modalUpload.id)
       onReload()
+      addToast('Excel subido correctamente', 'success')
     } catch (e) {
-      alert('Error: ' + (e.response?.data?.error ?? e.message))
+      addToast('Error: ' + (e.response?.data?.error ?? e.message), 'error')
     } finally {
       setUploading(false)
     }
@@ -75,51 +96,68 @@ export default function Sidebar({ cuatrimestres, seleccion, onSelect, onReload, 
     try {
       const programasResp = await api.get(`/cuatrimestres/${modalUpload.id}/programas`)
       const programa = programasResp.data.find(p => p.nombre === uploadForm.programa)
-      if (!programa) { alert('Primero sube el Excel de este programa'); return }
+      if (!programa) { addToast('Primero sube el Excel de este programa', 'warning'); return }
       const parcial = programa.parciales.find(p => p.numero === Number(uploadForm.numParcial))
-      if (!parcial) { alert('Primero sube el Excel de este parcial'); return }
-      const r = await uploadPDFs(parcial.id, uploadForm.numParcial, files)
+      if (!parcial) { addToast('Primero sube el Excel de este parcial', 'warning'); return }
+      const r   = await uploadPDFs(parcial.id, uploadForm.numParcial, files)
       const ok  = r.data.resultados.filter(x => !x.error).length
       const err = r.data.resultados.filter(x => x.error).length
-      alert(`PDFs procesados: ${ok} exitosos${err ? `, ${err} con error` : ''}`)
+      addToast(`PDFs procesados: ${ok} exitosos${err ? `, ${err} con error` : ''}`, err ? 'warning' : 'success')
       await refreshProgramas(modalUpload.id)
       onReload()
     } catch (e) {
-      alert('Error: ' + (e.response?.data?.error ?? e.message))
+      addToast('Error: ' + (e.response?.data?.error ?? e.message), 'error')
     } finally {
       setUploading(false)
     }
   }
 
+  function pedirConfirm(mensaje, accion) {
+    setConfirm({ mensaje, accion })
+  }
+
+  async function ejecutarConfirm() {
+    if (confirm?.accion) await confirm.accion()
+    setConfirm(null)
+  }
+
   async function handleEliminarCuatri(e, cuatri) {
     e.stopPropagation()
-    if (!confirm(`¿Eliminar "${cuatri.nombre}" y todos sus datos?`)) return
-    await eliminarCuatrimestre(cuatri.id)
-    onReload()
+    pedirConfirm(`¿Eliminar "${cuatri.nombre}" y todos sus datos?`, async () => {
+      await eliminarCuatrimestre(cuatri.id)
+      addToast('Cuatrimestre eliminado', 'success')
+      onReload()
+    })
   }
 
   async function handleEliminarPrograma(e, cuatriId, prog) {
     e.stopPropagation()
-    if (!confirm(`¿Eliminar "${prog.nombre}" y todos sus parciales?`)) return
-    await eliminarPrograma(cuatriId, prog.id)
-    await refreshProgramas(cuatriId)
-    onReload()
+    pedirConfirm(`¿Eliminar "${prog.nombre}" y todos sus parciales?`, async () => {
+      await eliminarPrograma(cuatriId, prog.id)
+      addToast('Programa eliminado', 'success')
+      await refreshProgramas(cuatriId)
+      onReload()
+    })
   }
 
   async function handleEliminarParcial(e, cuatriId, programaId, parcial) {
     e.stopPropagation()
-    if (!confirm(`¿Eliminar "${parcial.label}"?`)) return
-    await eliminarParcial(cuatriId, programaId, parcial.id)
-    await refreshProgramas(cuatriId)
-    onReload()
+    pedirConfirm(`¿Eliminar "${parcial.label}"?`, async () => {
+      await eliminarParcial(cuatriId, programaId, parcial.id)
+      addToast('Parcial eliminado', 'success')
+      await refreshProgramas(cuatriId)
+      onReload()
+    })
   }
 
   async function handleLimpiarParcial(e, cuatriId, programaId, parcial) {
     e.stopPropagation()
-    if (!confirm(`¿Limpiar datos de "${parcial.label}"? Los grupos y materias se borrarán pero el parcial permanece.`)) return
-    await limpiarParcial(parcial.id)
-    await refreshProgramas(cuatriId)
-    onReload()
+    pedirConfirm(`¿Limpiar datos de "${parcial.label}"?`, async () => {
+      await limpiarParcial(parcial.id)
+      addToast('Datos del parcial limpiados', 'success')
+      await refreshProgramas(cuatriId)
+      onReload()
+    })
   }
 
   const usuario = localStorage.getItem('usuario') || ''
@@ -179,9 +217,14 @@ export default function Sidebar({ cuatrimestres, seleccion, onSelect, onReload, 
                         <button
                           className={`parcial-btn ${seleccion?.parcial.id === p.id ? 'active' : ''}`}
                           onClick={() => onSelect(c, p, prog)}
-                          style={{ paddingLeft:28, flex:1, textAlign:'left' }}
+                          style={{ paddingLeft:28, flex:1, textAlign:'left', display:'flex', justifyContent:'space-between', alignItems:'center' }}
                         >
-                          {p.label}
+                          <span>{p.label}</span>
+                          {p.promedio && (
+                            <span style={{ fontSize:10, color: seleccion?.parcial.id === p.id ? '#fff' : '#1D9E75', fontWeight:600, marginRight:4 }}>
+                              {p.promedio}
+                            </span>
+                          )}
                         </button>
                         {esAdmin && (
                           <div style={{ display:'flex', gap:2, paddingRight:6 }}>
@@ -207,17 +250,36 @@ export default function Sidebar({ cuatrimestres, seleccion, onSelect, onReload, 
                 ))}
 
                 {esAdmin && (
-                  <button
-                    className="parcial-btn"
-                    style={{ color:'#1D9E75', paddingLeft:18 }}
-                    onClick={() => { setUploadForm({ programa: PROGRAMAS[0], numParcial:'1' }); setModalUpload(c) }}
-                  >
-                    + Subir parcial
-                  </button>
+                  <div style={{ display:'flex', flexDirection:'column' }}>
+                    <button
+                      className="parcial-btn"
+                      style={{ color:'#1D9E75', paddingLeft:18 }}
+                      onClick={() => { setUploadForm({ programa: PROGRAMAS[0], numParcial:'1' }); setModalUpload(c) }}
+                    >
+                      + Subir parcial
+                    </button>
+                    <button
+                      className="parcial-btn"
+                      style={{ color:'#378ADD', paddingLeft:18 }}
+                      onClick={() => { setUploadForm({ programa: PROGRAMAS[0], numParcial:'1' }); setModalUpload(c) }}
+                    >
+                      + Agregar programa
+                    </button>
+                  </div>
                 )}
               </div>
             </div>
           ))}
+        </div>
+
+        <div className="sidebar-section">
+          <button
+            className={`cuatri-btn ${vistaDocentes ? 'open' : ''}`}
+            onClick={onVerDocentes}
+            style={{ fontWeight: vistaDocentes ? 700 : 600, color: vistaDocentes ? '#1D9E75' : '#555' }}
+          >
+            <span>👤 Docentes y correos</span>
+          </button>
         </div>
 
         {esAdmin && (
@@ -237,6 +299,14 @@ export default function Sidebar({ cuatrimestres, seleccion, onSelect, onReload, 
           </button>
         </div>
       </aside>
+
+      {confirm && (
+        <ModalConfirm
+          mensaje={confirm.mensaje}
+          onAceptar={ejecutarConfirm}
+          onCancelar={() => setConfirm(null)}
+        />
+      )}
 
       {modal && (
         <div className="modal-bg" onClick={e => e.target === e.currentTarget && setModal(false)}>

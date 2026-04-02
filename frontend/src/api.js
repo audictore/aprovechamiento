@@ -32,6 +32,7 @@ export const getProgramas      = (cuatriId)      => api.get(`/cuatrimestres/${cu
 export const getReporte        = (parcialId)     => api.get(`/parciales/${parcialId}/reporte`)
 export const getDocentes       = ()              => api.get('/docentes')
 export const updateEmail       = (id, email)     => api.put(`/docentes/${id}/email`, { email })
+export const enviarCorreosDirecto = (data) => api.post('/docentes/enviar-correos', data)
 export const enviarCorreos     = (parcialId, data) => api.post(`/parciales/${parcialId}/enviar-correos`, data)
 
 export const uploadExcel = (cuatriId, programa, numParcial, file) => {

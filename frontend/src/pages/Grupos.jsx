@@ -49,40 +49,19 @@ export default function Grupos({ parcialId }) {
         <span>Promedio: <strong style={{ color: '#1D9E75' }}>{promGrupo}</strong></span>
       </div>
 
-      <div className="chart-grid">
+      <div className="chart-grid single">
         <div className="chart-card">
           <h3>Promedio por materia — Grupo {grupo.nombre}</h3>
           <div className="chart-wrap">
             <Bar
               data={{
                 labels:   mats.map(m => m.nombre.length > 16 ? m.nombre.slice(0,16)+'…' : m.nombre),
-                datasets: [{ data: mats.map(m => m.promedio), backgroundColor: COLORS, borderRadius: 5 }]
+                datasets: [{ data: mats.map(m => m.promedio), backgroundColor: mats.map(m => m.promedio < 8 ? '#D85A30' : '#1D9E75'), borderRadius: 5 }]
               }}
               options={{
                 responsive: true, maintainAspectRatio: false,
                 plugins: { legend: { display: false } },
                 scales:  { y: { min: 7, max: 10 } }
-              }}
-            />
-          </div>
-        </div>
-
-        <div className="chart-card">
-          <h3>Reprobados por materia</h3>
-          <div className="chart-wrap">
-            <Bar
-              data={{
-                labels:   mats.map(m => m.nombre.length > 16 ? m.nombre.slice(0,16)+'…' : m.nombre),
-                datasets: [{
-                  data: mats.map(m => m.reprobados),
-                  backgroundColor: mats.map(m => m.reprobados === 0 ? '#1D9E75' : m.reprobados <= 2 ? '#BA7517' : '#D85A30'),
-                  borderRadius: 5
-                }]
-              }}
-              options={{
-                responsive: true, maintainAspectRatio: false,
-                plugins: { legend: { display: false } },
-                scales:  { y: { ticks: { stepSize: 1 } } }
               }}
             />
           </div>
@@ -94,35 +73,20 @@ export default function Grupos({ parcialId }) {
           <thead>
             <tr>
               <th>Materia</th><th>Docente</th><th>Promedio</th>
-              <th>Alumnos</th><th>Reprobados</th><th>% Rep.</th>
             </tr>
           </thead>
           <tbody>
-            {grupo.materias.map(m => {
-              const pct = grupo.alumnos > 0
-                ? ((m.reprobados / grupo.alumnos) * 100).toFixed(1)
-                : '0'
-              return (
-                <tr key={m.id}>
-                  <td><strong>{m.nombre}</strong></td>
-                  <td style={{ fontSize: 11, color: '#aaa' }}>{m.docenteNombre ?? 'No especificado'}</td>
-                  <td>
-                    <strong style={{ color: m.promedio >= 9 ? '#0F6E56' : m.promedio >= 8 ? '#1a1a1a' : '#A32D2D' }}>
-                      {m.promedio > 0 ? m.promedio.toFixed(2) : '—'}
-                    </strong>
-                  </td>
-                  <td>{grupo.alumnos}</td>
-                  <td>
-                    <span className={`badge ${m.reprobados === 0 ? 'badge-ok' : m.reprobados <= 2 ? 'badge-warn' : 'badge-bad'}`}>
-                      {m.reprobados}
-                    </span>
-                  </td>
-                  <td style={{ fontSize: 11, color: '#aaa' }}>
-                    {m.reprobados > 0 ? pct + '%' : '—'}
-                  </td>
-                </tr>
-              )
-            })}
+            {grupo.materias.map(m => (
+              <tr key={m.id}>
+                <td><strong>{m.nombre}</strong></td>
+                <td style={{ fontSize: 11, color: '#aaa' }}>{m.docenteNombre ?? 'No especificado'}</td>
+                <td>
+                  <strong style={{ color: m.promedio >= 9 ? '#0F6E56' : m.promedio >= 8 ? '#1a1a1a' : '#A32D2D' }}>
+                    {m.promedio > 0 ? m.promedio.toFixed(2) : '—'}
+                  </strong>
+                </td>
+              </tr>
+            ))}
           </tbody>
         </table>
       </div>
