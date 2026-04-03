@@ -1,14 +1,10 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { getDocentes, updateEmail, enviarCorreosDirecto, getCuatrimestres, getReporte, getTendencia } from '../api.js'
 import { useToast } from '../components/Toast.jsx'
+import GraficasPDF from '../components/GraficasPDF.jsx'
 import jsPDF from 'jspdf'
+import html2canvas from 'html2canvas'
 import axios from 'axios'
-import {
-  Chart, CategoryScale, LinearScale,
-  BarElement, LineElement, PointElement, Tooltip, Legend
-} from 'chart.js'
-
-Chart.register(CategoryScale, LinearScale, BarElement, LineElement, PointElement, Tooltip, Legend)
 
 const api = axios.create({ baseURL: import.meta.env.VITE_API_URL ?? '/api' })
 api.interceptors.request.use(config => {
@@ -16,53 +12,6 @@ api.interceptors.request.use(config => {
   if (token) config.headers.Authorization = `Bearer ${token}`
   return config
 })
-
-const COLORS = ['#1D9E75','#378ADD','#BA7517','#D85A30','#7F77DD','#D4537E','#639922','#985C3C']
-
-// Genera una gráfica de barras como canvas y devuelve dataURL
-function crearGraficaBarra({ labels, data, colors, indexAxis = 'x', min = 7, max = 10, width = 550, height = 250 }) {
-  const canvas  = document.createElement('canvas')
-  canvas.width  = width
-  canvas.height = height
-  const chart = new Chart(canvas, {
-    type: 'bar',
-    data: {
-      labels,
-      datasets: [{ data, backgroundColor: colors, borderRadius: 4 }]
-    },
-    options: {
-      animation: false,
-      responsive: false,
-      indexAxis,
-      plugins: { legend: { display: false } },
-      scales: indexAxis === 'y'
-        ? { x: { min, max }, y: {} }
-        : { y: { min, max }, x: {} }
-    }
-  })
-  const img = canvas.toDataURL('image/png')
-  chart.destroy()
-  return img
-}
-
-function crearGraficaLinea({ labels, datasets, width = 550, height = 260 }) {
-  const canvas  = document.createElement('canvas')
-  canvas.width  = width
-  canvas.height = height
-  const chart = new Chart(canvas, {
-    type: 'line',
-    data: { labels, datasets },
-    options: {
-      animation: false,
-      responsive: false,
-      plugins: { legend: { display: true, position: 'bottom' } },
-      scales: { y: { min: 7, max: 10 } }
-    }
-  })
-  const img = canvas.toDataURL('image/png')
-  chart.destroy()
-  return img
-}
 
 export default function Docentes({ esAdmin }) {
   const [docentes,      setDocentes]      = useState([])
@@ -82,6 +31,7 @@ export default function Docentes({ esAdmin }) {
   const [mostrarTodos,  setMostrarTodos]  = useState(false)
   const [adjuntos,      setAdjuntos]      = useState([])
   const [generando,     setGenerando]     = useState(false)
+  const graficasRefs                      = useRef({})
   const { addToast }                      = useToast()
 
   useEffect(() => {
@@ -110,6 +60,7 @@ export default function Docentes({ esAdmin }) {
       try {
         const r = await getReporte(parcialId)
         setReportes(prev => ({ ...prev, [parcialId]: r.data }))
+        // Cargar tendencia del programa
         const progId = r.data.programaId
         if (progId && !tendencias[progId]) {
           try {
@@ -212,20 +163,9 @@ export default function Docentes({ esAdmin }) {
     return `Estimado(a) ${doc.nombre},\n${encab}${bloque}\nAtentamente,\nCoordinación Académica — UPMH`
   }
 
-  function agregarImgPDF(pdf, imgData, margin, pdfW, pdfH, titulo, y) {
-    const imgW   = pdfW - margin * 2
-    const canvas = document.createElement('canvas')
-    const img    = new Image()
-    img.src      = imgData
-    const imgH   = Math.min((img.height || 250) * imgW / (img.width || 550), pdfH * 0.4)
-    if (titulo) {
-      pdf.setFontSize(10)
-      pdf.setTextColor(29, 158, 117)
-      pdf.text(titulo, margin, y)
-      y += 6
-    }
-    pdf.addImage(imgData, 'PNG', margin, y, imgW, imgH)
-    return y + imgH + 8
+  async function capturarEl(el) {
+    const canvas  = await html2canvas(el, { scale: 1.5, useCORS: true, backgroundColor: '#ffffff' })
+    return canvas.toDataURL('image/png')
   }
 
   async function handleGenerarPDF() {
@@ -234,11 +174,15 @@ export default function Docentes({ esAdmin }) {
     addToast('Generando PDF con gráficas…', 'info')
 
     try {
-      const pdf    = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' })
-      const pdfW   = pdf.internal.pageSize.getWidth()
-      const pdfH   = pdf.internal.pageSize.getHeight()
-      const margin = 10
-      const cuatri = cuatrimestres.find(c => c.id === Number(cuatriSel))
+      // Esperar a que las gráficas se rendericen
+      await new Promise(r => setTimeout(r, 800))
+
+      const pdf      = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' })
+      const pdfW     = pdf.internal.pageSize.getWidth()
+      const pdfH     = pdf.internal.pageSize.getHeight()
+      const margin   = 10
+      const maxImgH  = (pdfH - margin * 2) / 2 - 15
+      const cuatri   = cuatrimestres.find(c => c.id === Number(cuatriSel))
 
       // Portada
       pdf.setFillColor(29, 158, 117)
@@ -252,44 +196,46 @@ export default function Docentes({ esAdmin }) {
       pdf.text(`Cuatrimestre: ${cuatri?.nombre || ''}  ·  Fecha: ${new Date().toLocaleDateString('es-MX')}`, margin, 34)
 
       for (const pid of parcialIds) {
-        const rep = reportes[pid]
+        const rep  = reportes[pid]
         if (!rep) continue
+        const refs = graficasRefs.current[pid]
+        if (!refs) continue
 
-        const grupoConProm = g => {
-          const mats = g.materias.filter(m => m.promedio > 0)
-          return mats.length ? mats.reduce((s, m) => s + m.promedio, 0) / mats.length : 0
+        const { refGrupos, refRiesgo, refMaterias, refLinea } = refs
+
+        // Función para agregar imagen al PDF
+        async function agregarImagen(ref, titulo, addPageFirst = true) {
+          if (!ref?.current) return
+          if (addPageFirst) pdf.addPage()
+          const imgData = await capturarEl(ref.current)
+          const imgW    = pdfW - margin * 2
+          const imgH    = Math.min(
+            (ref.current.offsetHeight * imgW) / ref.current.offsetWidth,
+            maxImgH * 1.8
+          )
+          pdf.setFontSize(12)
+          pdf.setTextColor(29, 158, 117)
+          pdf.text(titulo, margin, margin + 6)
+          pdf.addImage(imgData, 'PNG', margin, margin + 12, imgW, imgH)
         }
 
-        const grupoLabels = rep.grupos.map(g => g.nombre)
-        const grupoAvgs   = rep.grupos.map(g => +grupoConProm(g).toFixed(2))
-
-        const matMap = {}
-        rep.grupos.forEach(g => g.materias.forEach(m => {
-          if (m.promedio > 0) {
-            if (!matMap[m.nombre]) matMap[m.nombre] = []
-            matMap[m.nombre].push(m.promedio)
-          }
-        }))
-
-        const materiasEnRiesgo = Object.entries(matMap)
-          .map(([nombre, promedios]) => ({ nombre, promedio: promedios.reduce((a, b) => a + b, 0) / promedios.length }))
-          .filter(m => m.promedio < 8)
-          .sort((a, b) => a.promedio - b.promedio)
-
-        const matNombres = Object.keys(matMap)
-        const matAvgs    = matNombres.map(n => +(matMap[n].reduce((a, b) => a + b, 0) / matMap[n].length).toFixed(2))
-
-        // Página con tabla de grupos
+        // Encabezado del programa
         pdf.addPage()
         pdf.setFillColor(29, 158, 117)
         pdf.rect(0, 0, pdfW, 20, 'F')
         pdf.setFontSize(12)
         pdf.setTextColor(255, 255, 255)
-        pdf.text(rep.programa.length > 60 ? rep.programa.slice(0,60)+'…' : rep.programa, margin, 12)
+        pdf.text(rep.programa, margin, 12)
         pdf.setFontSize(9)
         pdf.text(rep.parcialLabel, margin, 18)
 
+        // Tabla de grupos
         let y = 28
+        const grupoConProm = g => {
+          const mats = g.materias.filter(m => m.promedio > 0)
+          return mats.length ? mats.reduce((s, m) => s + m.promedio, 0) / mats.length : 0
+        }
+
         pdf.setFillColor(240, 240, 240)
         pdf.rect(margin, y, pdfW - margin * 2, 7, 'F')
         pdf.setFontSize(9)
@@ -320,98 +266,23 @@ export default function Docentes({ esAdmin }) {
           if (y > pdfH - 20) { pdf.addPage(); y = margin }
         })
 
-        // Página con gráficas
-        pdf.addPage()
-        y = margin
-
-        // Gráfica 1: Promedio por grupo
-        const imgGrupos = crearGraficaBarra({
-          labels: grupoLabels,
-          data:   grupoAvgs,
-          colors: grupoAvgs.map(a => a < 8 ? '#D85A30' : '#1D9E75')
-        })
-        pdf.setFontSize(10)
-        pdf.setTextColor(29, 158, 117)
-        pdf.text('Promedio por grupo', margin, y + 5)
-        y += 8
-        const imgW  = pdfW - margin * 2
-        const imgH1 = imgW * 250 / 550
-        pdf.addImage(imgGrupos, 'PNG', margin, y, imgW, imgH1)
-        y += imgH1 + 6
-
-        // Gráfica 2: Materias en riesgo
-        if (materiasEnRiesgo.length > 0) {
-          const imgRiesgo = crearGraficaBarra({
-            labels:    materiasEnRiesgo.map(m => m.nombre.length > 25 ? m.nombre.slice(0,25)+'…' : m.nombre),
-            data:      materiasEnRiesgo.map(m => +m.promedio.toFixed(2)),
-            colors:    materiasEnRiesgo.map(() => '#D85A30'),
-            indexAxis: 'y',
-            min:       6,
-            height:    Math.max(150, materiasEnRiesgo.length * 40)
-          })
-          pdf.setFontSize(10)
-          pdf.setTextColor(29, 158, 117)
-          pdf.text('Materias en riesgo (prom. < 8)', margin, y + 5)
-          y += 8
-          const imgH2 = imgW * Math.max(150, materiasEnRiesgo.length * 40) / 550
-          pdf.addImage(imgRiesgo, 'PNG', margin, y, imgW, imgH2)
-          y += imgH2 + 6
-        }
-
-        // Nueva página si hace falta
-        if (y > pdfH - 80) { pdf.addPage(); y = margin }
-
-        // Gráfica 3: Promedio por materia
-        const imgMaterias = crearGraficaBarra({
-          labels:    matNombres.map(n => n.length > 30 ? n.slice(0,30)+'…' : n),
-          data:      matAvgs,
-          colors:    matAvgs.map(a => a < 8 ? '#D85A30' : '#1D9E75'),
-          indexAxis: 'y',
-          min:       7,
-          height:    Math.max(200, matNombres.length * 35)
-        })
-        pdf.setFontSize(10)
-        pdf.setTextColor(29, 158, 117)
-        pdf.text('Promedio por materia — entre grupos', margin, y + 5)
-        y += 8
-        const imgH3 = imgW * Math.max(200, matNombres.length * 35) / 550
-        if (y + imgH3 > pdfH - 10) { pdf.addPage(); y = margin }
-        pdf.addImage(imgMaterias, 'PNG', margin, y, imgW, imgH3)
-        y += imgH3 + 6
-
-        // Gráfica 4: Evolución entre parciales
-        const tendencia = tendencias[rep.programaId]
-        if (tendencia && tendencia.length > 1) {
-          const nombresGrupos = [...new Set(tendencia.flatMap(p => p.grupos.map(g => g.nombre)))].sort()
-          const imgLinea = crearGraficaLinea({
-            labels:   tendencia.map(p => p.label),
-            datasets: nombresGrupos.map((nombre, idx) => ({
-              label:           nombre,
-              data:            tendencia.map(p => { const g = p.grupos.find(g => g.nombre === nombre); return g ? g.promedio : null }),
-              borderColor:     COLORS[idx % COLORS.length],
-              backgroundColor: COLORS[idx % COLORS.length] + '33',
-              tension:         0.3,
-              pointRadius:     5
-            }))
-          })
-          if (y + 70 > pdfH - 10) { pdf.addPage(); y = margin }
-          pdf.setFontSize(10)
-          pdf.setTextColor(29, 158, 117)
-          pdf.text('Evolución de promedio — entre parciales', margin, y + 5)
-          y += 8
-          const imgH4 = imgW * 260 / 550
-          pdf.addImage(imgLinea, 'PNG', margin, y, imgW, imgH4)
+        // Gráficas — 2 por página
+        await agregarImagen(refGrupos,   `Promedio por grupo — ${rep.parcialLabel}`)
+        await agregarImagen(refRiesgo,   `Materias en riesgo — ${rep.parcialLabel}`)
+        await agregarImagen(refMaterias, `Promedio por materia — ${rep.parcialLabel}`)
+        if (refLinea?.current) {
+          await agregarImagen(refLinea, `Evolución entre parciales — ${rep.programa}`)
         }
       }
 
       const blob   = pdf.output('blob')
-      const nombre = `Reporte_${cuatri?.nombre || 'UPMH'}_${new Date().toLocaleDateString('es-MX').replace(/\//g,'-')}.pdf`
+      const cuatriNombre = cuatri?.nombre || 'UPMH'
+      const nombre = `Reporte_${cuatriNombre}_${new Date().toLocaleDateString('es-MX').replace(/\//g,'-')}.pdf`
       const file   = new File([blob], nombre, { type: 'application/pdf' })
       setAdjuntos(prev => [...prev.filter(f => !f.name.startsWith('Reporte_')), file])
-      addToast('PDF con gráficas listo', 'success')
+      addToast('PDF con gráficas agregado a los adjuntos', 'success')
     } catch (e) {
       addToast('Error al generar PDF: ' + e.message, 'error')
-      console.error(e)
     } finally {
       setGenerando(false)
     }
@@ -451,6 +322,22 @@ export default function Docentes({ esAdmin }) {
       <div style={{ marginBottom: 20 }}>
         <h2 style={{ fontSize: 16, fontWeight: 700 }}>Docentes y correos</h2>
       </div>
+
+      {/* Gráficas ocultas para PDF */}
+      {parcialIds.map(pid => {
+        const rep = reportes[pid]
+        if (!rep) return null
+        const progId   = rep.programaId
+        const tendencia = tendencias[progId] || null
+        return (
+          <GraficasPDF
+            key={pid}
+            reporte={rep}
+            tendencia={tendencia}
+            onReady={refs => { graficasRefs.current[pid] = refs }}
+          />
+        )
+      })}
 
       <div className="tcard" style={{ padding:16, marginBottom:16 }}>
         <div className="field" style={{ margin:0, maxWidth:300 }}>

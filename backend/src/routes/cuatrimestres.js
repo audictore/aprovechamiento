@@ -149,4 +149,74 @@ router.delete('/:cuatriId/programas/:programaId/parciales/:parcialId', async (re
   }
 })
 
+router.get('/:id/estadisticas', async (req, res, next) => {
+  try {
+    const programas = await prisma.programaEducativo.findMany({
+      where:   { cuatrimestreId: Number(req.params.id) },
+      orderBy: { nombre: 'asc' },
+      include: {
+        parciales: {
+          orderBy: { numero: 'asc' },
+          include: { grupos: { include: { materias: true } } }
+        }
+      }
+    })
+
+    const resultado = programas.map(prog => {
+      const grupoConProm = g => {
+        const mats = g.materias.filter(m => m.promedio > 0)
+        return mats.length ? mats.reduce((s, m) => s + m.promedio, 0) / mats.length : 0
+      }
+
+      const parciales = prog.parciales.map(p => {
+        const grupos = p.grupos.map(g => ({
+          nombre:   g.nombre,
+          promedio: +grupoConProm(g).toFixed(2),
+          alumnos:  g.alumnos
+        }))
+
+        const promedioGeneral = grupos.length
+          ? +(grupos.reduce((s, g) => s + g.promedio, 0) / grupos.length).toFixed(2)
+          : 0
+
+        const totalAlumnos = grupos.reduce((s, g) => s + g.alumnos, 0)
+
+        const matMap = {}
+        p.grupos.forEach(g => g.materias.forEach(m => {
+          if (m.promedio > 0) {
+            if (!matMap[m.nombre]) matMap[m.nombre] = []
+            matMap[m.nombre].push(m.promedio)
+          }
+        }))
+
+        const materias = Object.entries(matMap).map(([nombre, promedios]) => ({
+          nombre,
+          promedio: +(promedios.reduce((a, b) => a + b, 0) / promedios.length).toFixed(2)
+        })).sort((a, b) => a.promedio - b.promedio)
+
+        const materiasEnRiesgo = materias.filter(m => m.promedio < 8)
+
+        return {
+          id:              p.id,
+          label:           p.label,
+          numero:          p.numero,
+          promedioGeneral,
+          totalAlumnos,
+          grupos,
+          materias,
+          materiasEnRiesgo
+        }
+      })
+
+      return {
+        id:       prog.id,
+        nombre:   prog.nombre,
+        parciales
+      }
+    })
+
+    res.json(resultado)
+  } catch (e) { next(e) }
+})
+
 export default router

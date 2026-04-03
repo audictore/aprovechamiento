@@ -6,6 +6,8 @@ import {
 } from 'chart.js'
 import { getReporte, uploadExcel, getTendencia } from '../api.js'
 import { useToast } from '../components/Toast.jsx'
+import jsPDF from 'jspdf'
+import html2canvas from 'html2canvas'
 
 Chart.register(CategoryScale, LinearScale, BarElement, LineElement, PointElement, Tooltip, Legend)
 
@@ -25,6 +27,7 @@ export default function Dashboard({ seleccion, onReload, esAdmin }) {
   const [uploading,   setUploading]   = useState(false)
   const [grupoFiltro, setGrupoFiltro] = useState('todos')
   const fileRef      = useRef()
+  const dashRef      = useRef()
   const { addToast } = useToast()
 
   useEffect(() => {
@@ -100,6 +103,74 @@ export default function Dashboard({ seleccion, onReload, esAdmin }) {
       addToast('Reporte exportado correctamente', 'success')
     } catch (e) {
       addToast('Error al exportar: ' + e.message, 'error')
+    }
+  }
+
+  async function exportarPDF() {
+    try {
+      addToast('Generando PDF…', 'info')
+      const pdf        = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' })
+      const pdfWidth   = pdf.internal.pageSize.getWidth()
+      const pdfHeight  = pdf.internal.pageSize.getHeight()
+      const margin     = 10
+      const disponible = pdfHeight - margin * 2
+      const maxH       = (disponible / 2) - 15
+
+      async function capturar(el) {
+        const canvas  = await html2canvas(el, { scale: 1.5, useCORS: true, backgroundColor: '#ffffff' })
+        const imgData = canvas.toDataURL('image/png')
+        const imgW    = pdfWidth - margin * 2
+        const imgH    = Math.min((canvas.height * imgW) / canvas.width, maxH)
+        return { imgData, imgW, imgH }
+      }
+
+      // Página 1 — Título + métricas
+      pdf.setFontSize(16)
+      pdf.setTextColor(29, 158, 117)
+      pdf.text('Reporte de Aprovechamiento Académico', margin, 18)
+      pdf.setFontSize(10)
+      pdf.setTextColor(100)
+      pdf.text(`${seleccion.cuatri.nombre} › ${seleccion.programa.nombre} › ${seleccion.parcial.label}`, margin, 25)
+
+      const metricas = dashRef.current.querySelector('.metrics')
+      if (metricas) {
+        const { imgData, imgW, imgH } = await capturar(metricas)
+        pdf.addImage(imgData, 'PNG', margin, 32, imgW, imgH)
+      }
+
+      const chartCards = [...dashRef.current.querySelectorAll('.chart-card')]
+      const tabla      = dashRef.current.querySelector('.tcard')
+      const elementos  = [
+        ...chartCards.map((el, i) => ({ el, titulo: el.querySelector('h3')?.textContent || `Gráfica ${i+1}` })),
+        ...(tabla ? [{ el: tabla, titulo: 'Tabla resumen' }] : [])
+      ]
+
+      for (let i = 0; i < elementos.length; i += 2) {
+        pdf.addPage()
+        let posY = margin
+
+        const { el: el1, titulo: t1 } = elementos[i]
+        pdf.setFontSize(12)
+        pdf.setTextColor(29, 158, 117)
+        pdf.text(t1, margin, posY + 6)
+        const c1 = await capturar(el1)
+        pdf.addImage(c1.imgData, 'PNG', margin, posY + 10, c1.imgW, c1.imgH)
+        posY += c1.imgH + 18
+
+        if (elementos[i + 1]) {
+          const { el: el2, titulo: t2 } = elementos[i + 1]
+          pdf.setFontSize(12)
+          pdf.setTextColor(29, 158, 117)
+          pdf.text(t2, margin, posY + 6)
+          const c2 = await capturar(el2)
+          pdf.addImage(c2.imgData, 'PNG', margin, posY + 10, c2.imgW, c2.imgH)
+        }
+      }
+
+      pdf.save(`Aprovechamiento_${seleccion.cuatri.nombre}_${seleccion.programa.nombre}_${seleccion.parcial.label}.pdf`)
+      addToast('PDF exportado correctamente', 'success')
+    } catch (e) {
+      addToast('Error al generar PDF: ' + e.message, 'error')
     }
   }
 
@@ -185,7 +256,7 @@ export default function Dashboard({ seleccion, onReload, esAdmin }) {
 
   return (
     <>
-      <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:8, flexWrap:'wrap', gap:8 }}>
+      <div className="no-print" style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:8, flexWrap:'wrap', gap:8 }}>
         <div style={{ display:'flex', gap:6, flexWrap:'wrap' }}>
           <button
             className={`btn ${grupoFiltro === 'todos' ? 'btn-primary' : ''}`}
@@ -207,7 +278,13 @@ export default function Dashboard({ seleccion, onReload, esAdmin }) {
         </div>
         <div style={{ display:'flex', gap:8 }}>
           <button className="btn btn-primary" style={{ fontSize:11 }} onClick={exportarExcel}>
-            ↓ Exportar Excel
+            ↓ Excel
+          </button>
+          <button className="btn" style={{ fontSize:11 }} onClick={exportarPDF}>
+            ↓ PDF
+          </button>
+          <button className="btn" style={{ fontSize:11 }} onClick={() => window.print()}>
+            🖨 Imprimir
           </button>
           {esAdmin && (
             <>
@@ -220,131 +297,141 @@ export default function Dashboard({ seleccion, onReload, esAdmin }) {
         </div>
       </div>
 
-      <div className="metrics">
-        <div className="metric">
-          <div className="mlabel">Total alumnos</div>
-          <div className="mval">{totAlumnos}</div>
-          <div className="msub">{gruposFiltrados.length} grupos</div>
-        </div>
-        <div className="metric">
-          <div className="mlabel">Promedio general</div>
-          <div className="mval">{avgGeneral}</div>
-          <div className="msub">{seleccion.parcial.label}</div>
-        </div>
-        <div className="metric">
-          <div className="mlabel">Grupos en riesgo</div>
-          <div className="mval" style={{ color: gruposEnRiesgo.length > 0 ? '#A32D2D' : '#0F6E56' }}>
-            {gruposEnRiesgo.length}
-          </div>
-          <div className="msub">
-            {gruposEnRiesgo.length === 0
-              ? 'todos por encima de 8'
-              : gruposEnRiesgo.map(g => g.nombre).join(', ')}
-          </div>
-        </div>
-        <div className="metric">
-          <div className="mlabel">Materias en riesgo</div>
-          <div className="mval" style={{ color: materiasEnRiesgo.length > 0 ? '#A32D2D' : '#0F6E56' }}>
-            {materiasEnRiesgo.length}
-          </div>
-          <div className="msub">
-            {materiasEnRiesgo.length === 0
-              ? 'todas por encima de 8'
-              : materiasEnRiesgo.length === 1
-                ? materiasEnRiesgo[0].nombre.slice(0, 22)
-                : `${materiasEnRiesgo[0].nombre.slice(0, 18)}… y ${materiasEnRiesgo.length - 1} más`}
-          </div>
-        </div>
+      {/* Título para impresión */}
+      <div className="print-only" style={{ display:'none', marginBottom:16 }}>
+        <h2 style={{ fontSize:16, color:'#1D9E75', margin:0 }}>Reporte de Aprovechamiento Académico</h2>
+        <p style={{ fontSize:11, color:'#aaa', margin:'4px 0 0' }}>
+          {seleccion.cuatri.nombre} › {seleccion.programa.nombre} › {seleccion.parcial.label}
+        </p>
       </div>
 
-      <div className="chart-grid">
-        <div className="chart-card">
-          <h3>Promedio por grupo</h3>
-          <div className="chart-wrap">
-            <Bar
-              data={{ labels: grupoLabels, datasets: [{ data: grupoAvgs, backgroundColor: grupoAvgs.map(a => a < 8 ? '#D85A30' : '#1D9E75'), borderRadius: 5 }] }}
-              options={barOpts()}
-            />
+      <div ref={dashRef}>
+        <div className="metrics">
+          <div className="metric">
+            <div className="mlabel">Total alumnos</div>
+            <div className="mval">{totAlumnos}</div>
+            <div className="msub">{gruposFiltrados.length} grupos</div>
+          </div>
+          <div className="metric">
+            <div className="mlabel">Promedio general</div>
+            <div className="mval">{avgGeneral}</div>
+            <div className="msub">{seleccion.parcial.label}</div>
+          </div>
+          <div className="metric">
+            <div className="mlabel">Grupos en riesgo</div>
+            <div className="mval" style={{ color: gruposEnRiesgo.length > 0 ? '#A32D2D' : '#0F6E56' }}>
+              {gruposEnRiesgo.length}
+            </div>
+            <div className="msub">
+              {gruposEnRiesgo.length === 0
+                ? 'todos por encima de 8'
+                : gruposEnRiesgo.map(g => g.nombre).join(', ')}
+            </div>
+          </div>
+          <div className="metric">
+            <div className="mlabel">Materias en riesgo</div>
+            <div className="mval" style={{ color: materiasEnRiesgo.length > 0 ? '#A32D2D' : '#0F6E56' }}>
+              {materiasEnRiesgo.length}
+            </div>
+            <div className="msub">
+              {materiasEnRiesgo.length === 0
+                ? 'todas por encima de 8'
+                : materiasEnRiesgo.length === 1
+                  ? materiasEnRiesgo[0].nombre.slice(0, 22)
+                  : `${materiasEnRiesgo[0].nombre.slice(0, 18)}… y ${materiasEnRiesgo.length - 1} más`}
+            </div>
           </div>
         </div>
-        <div className="chart-card">
-          <h3>Materias en riesgo (prom. {'<'} 8)</h3>
-          <div className="chart-wrap">
-            {materiasEnRiesgo.length === 0
-              ? <div style={{ display:'flex', alignItems:'center', justifyContent:'center', height:'100%', color:'#1D9E75', fontWeight:600 }}>
-                  Todas las materias están bien ✓
-                </div>
-              : <Bar
-                  data={{
-                    labels:   materiasEnRiesgo.map(m => m.nombre.length > 25 ? m.nombre.slice(0,25)+'…' : m.nombre),
-                    datasets: [{ data: materiasEnRiesgo.map(m => +m.promedio.toFixed(2)), backgroundColor: '#D85A30', borderRadius: 5 }]
-                  }}
-                  options={{ ...barOpts(6), indexAxis: 'y', scales: { x: { min: 6, max: 10 } } }}
-                />
-            }
-          </div>
-        </div>
-      </div>
 
-      <div className="chart-grid single">
-        <div className="chart-card">
-          <h3>Promedio por materia — entre grupos</h3>
-          <div className="chart-wrap" style={{ height: matNombres.length * 36 + 60 }}>
-            <Bar
-              data={{
-                labels:   matNombres.map(n => n.length > 30 ? n.slice(0,30)+'…' : n),
-                datasets: [{ data: matAvgs, backgroundColor: matAvgs.map(a => a < 8 ? '#D85A30' : '#1D9E75'), borderRadius: 5 }]
-              }}
-              options={{ ...barOpts(), indexAxis: 'y', scales: { x: { min: 7, max: 10 } } }}
-            />
+        <div className="chart-grid">
+          <div className="chart-card">
+            <h3>Promedio por grupo</h3>
+            <div className="chart-wrap">
+              <Bar
+                data={{ labels: grupoLabels, datasets: [{ data: grupoAvgs, backgroundColor: grupoAvgs.map(a => a < 8 ? '#D85A30' : '#1D9E75'), borderRadius: 5 }] }}
+                options={barOpts()}
+              />
+            </div>
+          </div>
+          <div className="chart-card">
+            <h3>Materias en riesgo (prom. {'<'} 8)</h3>
+            <div className="chart-wrap">
+              {materiasEnRiesgo.length === 0
+                ? <div style={{ display:'flex', alignItems:'center', justifyContent:'center', height:'100%', color:'#1D9E75', fontWeight:600 }}>
+                    Todas las materias están bien ✓
+                  </div>
+                : <Bar
+                    data={{
+                      labels:   materiasEnRiesgo.map(m => m.nombre.length > 25 ? m.nombre.slice(0,25)+'…' : m.nombre),
+                      datasets: [{ data: materiasEnRiesgo.map(m => +m.promedio.toFixed(2)), backgroundColor: '#D85A30', borderRadius: 5 }]
+                    }}
+                    options={{ ...barOpts(6), indexAxis: 'y', scales: { x: { min: 6, max: 10 } } }}
+                  />
+              }
+            </div>
           </div>
         </div>
-      </div>
 
-      {tendencia && tendencia.length > 1 && (
         <div className="chart-grid single">
           <div className="chart-card">
-            <h3>Evolución de promedio por grupo — entre parciales</h3>
-            <div className="chart-wrap" style={{ height: 280 }}>
-              <Line
-                data={lineData}
-                options={{
-                  responsive: true,
-                  maintainAspectRatio: false,
-                  plugins: { legend: { display: true, position: 'bottom' } },
-                  scales: { y: { min: 7, max: 10, ticks: { font: { size: 11 } } } }
+            <h3>Promedio por materia — entre grupos</h3>
+            <div className="chart-wrap" style={{ height: matNombres.length * 36 + 60 }}>
+              <Bar
+                data={{
+                  labels:   matNombres.map(n => n.length > 30 ? n.slice(0,30)+'…' : n),
+                  datasets: [{ data: matAvgs, backgroundColor: matAvgs.map(a => a < 8 ? '#D85A30' : '#1D9E75'), borderRadius: 5 }]
                 }}
+                options={{ ...barOpts(), indexAxis: 'y', scales: { x: { min: 7, max: 10 } } }}
               />
             </div>
           </div>
         </div>
-      )}
 
-      <div className="tcard">
-        <table>
-          <thead>
-            <tr><th>Grupo</th><th>Tutor</th><th>Alumnos</th><th>Promedio</th><th>Estado</th></tr>
-          </thead>
-          <tbody>
-            {gruposFiltrados.map(g => {
-              const avg      = grupoConProm(g).toFixed(2)
-              const enRiesgo = +avg < 8
-              return (
-                <tr key={g.id}>
-                  <td><strong>{g.nombre}</strong></td>
-                  <td style={{ fontSize: 11, color: '#aaa' }}>{g.tutor || '—'}</td>
-                  <td>{g.alumnos}</td>
-                  <td><strong style={{ color: +avg >= 9 ? '#0F6E56' : +avg >= 8 ? '#1a1a1a' : '#A32D2D' }}>{avg}</strong></td>
-                  <td>
-                    <span className={`badge ${enRiesgo ? 'badge-bad' : 'badge-ok'}`}>
-                      {enRiesgo ? 'En riesgo' : 'Bien'}
-                    </span>
-                  </td>
-                </tr>
-              )
-            })}
-          </tbody>
-        </table>
+        {tendencia && tendencia.length > 1 && (
+          <div className="chart-grid single">
+            <div className="chart-card">
+              <h3>Evolución de promedio por grupo — entre parciales</h3>
+              <div className="chart-wrap" style={{ height: 280 }}>
+                <Line
+                  data={lineData}
+                  options={{
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { display: true, position: 'bottom' } },
+                    scales: { y: { min: 7, max: 10, ticks: { font: { size: 11 } } } }
+                  }}
+                />
+              </div>
+            </div>
+          </div>
+        )}
+
+        <div className="tcard">
+          <table>
+            <thead>
+              <tr><th>Grupo</th><th>Tutor</th><th>Alumnos</th><th>Promedio</th><th>Estado</th></tr>
+            </thead>
+            <tbody>
+              {gruposFiltrados.map(g => {
+                const avg      = grupoConProm(g).toFixed(2)
+                const enRiesgo = +avg < 8
+                return (
+                  <tr key={g.id}>
+                    <td><strong>{g.nombre}</strong></td>
+                    <td style={{ fontSize: 11, color: '#aaa' }}>{g.tutor || '—'}</td>
+                    <td>{g.alumnos}</td>
+                    <td><strong style={{ color: +avg >= 9 ? '#0F6E56' : +avg >= 8 ? '#1a1a1a' : '#A32D2D' }}>{avg}</strong></td>
+                    <td>
+                      <span className={`badge ${enRiesgo ? 'badge-bad' : 'badge-ok'}`}>
+                        {enRiesgo ? 'En riesgo' : 'Bien'}
+                      </span>
+                    </td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        </div>
       </div>
     </>
   )

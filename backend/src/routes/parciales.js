@@ -4,6 +4,7 @@ import prisma      from '../lib/prisma.js'
 import { parsearReporte }                from '../lib/excelParser.js'
 import { enviarCorreo, construirCuerpo } from '../lib/emailService.js'
 import { parsearPDF }                    from '../lib/pdfParser.js'
+import { requireAuth }                   from '../middleware/auth.js'
 
 const router = Router()
 const upload = multer({ storage: multer.memoryStorage() })
@@ -30,6 +31,7 @@ router.get('/:id/reporte', async (req, res, next) => {
       parcialId:    parcial.id,
       parcialLabel: parcial.label,
       programa:     parcial.programa.nombre,
+      programaId:   parcial.programa.id,
       cuatrimestre: parcial.programa.cuatrimestre.nombre,
       grupos: parcial.grupos.map(g => ({
         id:         g.id,
@@ -51,7 +53,7 @@ router.get('/:id/reporte', async (req, res, next) => {
   } catch (e) { next(e) }
 })
 
-router.post('/:cuatriId/:programaNombre/:numParcial/upload', upload.single('file'), async (req, res, next) => {
+router.post('/:cuatriId/:programaNombre/:numParcial/upload', requireAuth, upload.single('file'), async (req, res, next) => {
   try {
     const cuatriId       = Number(req.params.cuatriId)
     const programaNombre = decodeURIComponent(req.params.programaNombre)
@@ -124,13 +126,10 @@ router.post('/:cuatriId/:programaNombre/:numParcial/upload', upload.single('file
   } catch (e) { next(e) }
 })
 
-router.post('/:parcialId/upload-pdfs', upload.array('files', 20), async (req, res, next) => {
+router.post('/:parcialId/upload-pdfs', requireAuth, upload.array('files', 20), async (req, res, next) => {
   try {
     const parcialId  = Number(req.params.parcialId)
     const numParcial = Number(req.body.numParcial)
-
-    console.log('Upload PDFs - parcialId:', parcialId, 'numParcial:', numParcial)
-    console.log('Archivos recibidos:', req.files?.length)
 
     if (!req.files?.length) {
       return res.status(400).json({ error: 'No se recibieron archivos' })
@@ -141,8 +140,6 @@ router.post('/:parcialId/upload-pdfs', upload.array('files', 20), async (req, re
     for (const file of req.files) {
       try {
         const resultado = await parsearPDF(file.buffer, numParcial)
-        console.log('Resultado PDF:', file.originalname, '->', resultado)
-
         if (!resultado) {
           resultados.push({ archivo: file.originalname, error: 'No se pudo leer el grupo' })
           continue
@@ -152,11 +149,7 @@ router.post('/:parcialId/upload-pdfs', upload.array('files', 20), async (req, re
           where: { parcialId, nombre: resultado.grupo }
         })
 
-        console.log('Grupo encontrado en BD:', grupo?.nombre ?? 'NO ENCONTRADO')
-
         if (!grupo) {
-          const todosGrupos = await prisma.grupo.findMany({ where: { parcialId } })
-          console.log('Grupos en BD:', todosGrupos.map(g => g.nombre))
           resultados.push({ archivo: file.originalname, error: `Grupo ${resultado.grupo} no encontrado` })
           continue
         }
@@ -173,7 +166,6 @@ router.post('/:parcialId/upload-pdfs', upload.array('files', 20), async (req, re
           alumnos:    resultado.totalAlumnos
         })
       } catch (e) {
-        console.log('Error procesando PDF:', file.originalname, e.message)
         resultados.push({ archivo: file.originalname, error: e.message })
       }
     }
@@ -182,7 +174,7 @@ router.post('/:parcialId/upload-pdfs', upload.array('files', 20), async (req, re
   } catch (e) { next(e) }
 })
 
-router.post('/:id/enviar-correos', async (req, res, next) => {
+router.post('/:id/enviar-correos', requireAuth, async (req, res, next) => {
   try {
     const { asunto, mensajeExtra = '', destinatarios } = req.body
 
@@ -241,7 +233,7 @@ router.post('/:id/enviar-correos', async (req, res, next) => {
   } catch (e) { next(e) }
 })
 
-router.delete('/:id/datos', async (req, res, next) => {
+router.delete('/:id/datos', requireAuth, async (req, res, next) => {
   try {
     await prisma.grupo.deleteMany({
       where: { parcialId: Number(req.params.id) }

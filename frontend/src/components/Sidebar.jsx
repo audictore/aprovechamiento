@@ -33,7 +33,7 @@ function ModalConfirm({ mensaje, onAceptar, onCancelar }) {
   )
 }
 
-export default function Sidebar({ cuatrimestres, seleccion, onSelect, onReload, esAdmin, onLogout, vistaDocentes, onVerDocentes }) {
+export default function Sidebar({ cuatrimestres, seleccion, onSelect, onReload, esAdmin, onLogout, onLogin, autenticado, vistaDocentes, onVerDocentes, vistaEstadisticas, onVerEstadisticas, mobileOpen, darkMode, onToggleDark }) {
   const [abiertos,     setAbiertos]     = useState({})
   const [programasMap, setProgramasMap] = useState({})
   const [modal,        setModal]        = useState(false)
@@ -164,7 +164,7 @@ export default function Sidebar({ cuatrimestres, seleccion, onSelect, onReload, 
 
   return (
     <>
-      <aside className="sidebar">
+      <aside className={`sidebar ${mobileOpen ? 'mobile-open' : ''}`}>
         <div className="sidebar-logo">
           Aprovechamiento
           <span>UPMH — Sistema académico</span>
@@ -274,12 +274,21 @@ export default function Sidebar({ cuatrimestres, seleccion, onSelect, onReload, 
 
         <div className="sidebar-section">
           <button
-            className={`cuatri-btn ${vistaDocentes ? 'open' : ''}`}
-            onClick={onVerDocentes}
-            style={{ fontWeight: vistaDocentes ? 700 : 600, color: vistaDocentes ? '#1D9E75' : '#555' }}
+            className={`cuatri-btn ${vistaEstadisticas ? 'open' : ''}`}
+            onClick={onVerEstadisticas}
+            style={{ fontWeight: vistaEstadisticas ? 700 : 600, color: vistaEstadisticas ? '#1D9E75' : '#555' }}
           >
-            <span>👤 Docentes y correos</span>
+            <span>📊 Estadísticas globales</span>
           </button>
+          {esAdmin && (
+            <button
+              className={`cuatri-btn ${vistaDocentes ? 'open' : ''}`}
+              onClick={onVerDocentes}
+              style={{ fontWeight: vistaDocentes ? 700 : 600, color: vistaDocentes ? '#1D9E75' : '#555' }}
+            >
+              <span>👤 Docentes y correos</span>
+            </button>
+          )}
         </div>
 
         {esAdmin && (
@@ -290,13 +299,32 @@ export default function Sidebar({ cuatrimestres, seleccion, onSelect, onReload, 
           </div>
         )}
 
-        <div style={{ marginTop:'auto', padding:'12px 14px', borderTop:'1px solid #e8e8e4' }}>
-          <div style={{ fontSize:11, color:'#aaa', marginBottom:6 }}>
-            {usuario} · {esAdmin ? 'Administrador' : 'Observador'}
-          </div>
-          <button className="btn" style={{ width:'100%', fontSize:11 }} onClick={onLogout}>
-            Cerrar sesión
-          </button>
+        <div style={{ marginTop:'auto', padding:'12px 14px', borderTop:`1px solid var(--border)` }}>
+  <button
+    className="btn"
+    style={{ width:'100%', fontSize:11, marginBottom:6 }}
+    onClick={onToggleDark}
+  >
+    {darkMode ? '☀️ Modo claro' : '🌙 Modo oscuro'}
+  </button>
+  {autenticado ? (
+            <>
+              <div style={{ fontSize:11, color:'#aaa', marginBottom:6 }}>
+                {usuario} · {esAdmin ? 'Administrador' : 'Observador'}
+              </div>
+              <button className="btn" style={{ width:'100%', fontSize:11 }} onClick={onLogout}>
+                Cerrar sesión
+              </button>
+            </>
+          ) : (
+            <button
+              className="btn btn-primary"
+              style={{ width:'100%', fontSize:11 }}
+              onClick={onLogin}
+            >
+              🔑 Iniciar sesión
+            </button>
+          )}
         </div>
       </aside>
 

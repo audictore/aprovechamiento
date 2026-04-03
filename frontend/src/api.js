@@ -1,7 +1,9 @@
 import axios from 'axios'
 
+const BASE = import.meta.env.VITE_API_URL ?? '/api'
+
 const api = axios.create({
-  baseURL: import.meta.env.VITE_API_URL ?? '/api',
+  baseURL: BASE,
   headers: { 'Content-Type': 'application/json' }
 })
 
@@ -24,16 +26,25 @@ api.interceptors.response.use(
   }
 )
 
-export const login             = (data)          => api.post('/auth/login', data)
-export const verificar         = ()              => api.get('/auth/verificar')
-export const getCuatrimestres  = ()              => api.get('/cuatrimestres')
-export const crearCuatrimestre = (data)          => api.post('/cuatrimestres', data)
-export const getProgramas      = (cuatriId)      => api.get(`/cuatrimestres/${cuatriId}/programas`)
-export const getReporte        = (parcialId)     => api.get(`/parciales/${parcialId}/reporte`)
-export const getDocentes       = ()              => api.get('/docentes')
-export const updateEmail       = (id, email)     => api.put(`/docentes/${id}/email`, { email })
-export const enviarCorreosDirecto = (data) => api.post('/docentes/enviar-correos', data)
-export const enviarCorreos     = (parcialId, data) => api.post(`/parciales/${parcialId}/enviar-correos`, data)
+export const login                = (data)            => api.post('/auth/login', data)
+export const verificar            = ()                => api.get('/auth/verificar')
+export const getCuatrimestres     = ()                => api.get('/cuatrimestres')
+export const crearCuatrimestre    = (data)            => api.post('/cuatrimestres', data)
+export const getProgramas         = (cuatriId)        => api.get(`/cuatrimestres/${cuatriId}/programas`)
+export const getReporte           = (parcialId)       => api.get(`/parciales/${parcialId}/reporte`)
+export const getDocentes          = ()                => api.get('/docentes')
+export const updateEmail          = (id, email)       => api.put(`/docentes/${id}/email`, { email })
+export const enviarCorreos        = (parcialId, data) => api.post(`/parciales/${parcialId}/enviar-correos`, data)
+
+export const enviarCorreosDirecto = (data, archivos = []) => {
+  if (!archivos.length) return api.post('/docentes/enviar-correos', data)
+  const fd = new FormData()
+  fd.append('json', JSON.stringify(data))
+  archivos.forEach((f, i) => fd.append(`file_${i}`, f, f.name))
+  return api.post('/docentes/enviar-correos', fd, {
+    headers: { 'Content-Type': undefined }
+  })
+}
 
 export const uploadExcel = (cuatriId, programa, numParcial, file) => {
   const fd = new FormData()
@@ -53,12 +64,11 @@ export const uploadPDFs = (parcialId, numParcial, files) => {
   })
 }
 
-export const eliminarCuatrimestre = (id)                          => api.delete(`/cuatrimestres/${id}`)
-export const eliminarPrograma     = (cuatriId, programaId)        => api.delete(`/cuatrimestres/${cuatriId}/programas/${programaId}`)
+export const eliminarCuatrimestre = (id)                              => api.delete(`/cuatrimestres/${id}`)
+export const eliminarPrograma     = (cuatriId, programaId)            => api.delete(`/cuatrimestres/${cuatriId}/programas/${programaId}`)
 export const eliminarParcial      = (cuatriId, programaId, parcialId) => api.delete(`/cuatrimestres/${cuatriId}/programas/${programaId}/parciales/${parcialId}`)
-export const limpiarParcial       = (parcialId)                   => api.delete(`/parciales/${parcialId}/datos`)
-
-export const getTendencia = (cuatriId, programaId) =>
-  api.get(`/cuatrimestres/${cuatriId}/programas/${programaId}/tendencia`)
+export const limpiarParcial       = (parcialId)                       => api.delete(`/parciales/${parcialId}/datos`)
+export const getEstadisticas      = (cuatriId)                        => api.get(`/cuatrimestres/${cuatriId}/estadisticas`)
+export const getTendencia         = (cuatriId, programaId)            => api.get(`/cuatrimestres/${cuatriId}/programas/${programaId}/tendencia`)
 
 export default api

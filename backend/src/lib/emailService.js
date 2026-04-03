@@ -10,10 +10,12 @@ const transporter = nodemailer.createTransport({
   }
 })
 
-export async function enviarCorreo({ to, subject, text, graficasHtml = '', attachments = [] }) {
+export async function enviarCorreo({ to, subject, text, graficasHtml = '', attachments = [], adjuntos = [] }) {
   if (!process.env.SMTP_USER || !process.env.SMTP_PASS) {
     throw new Error('Configura SMTP_USER y SMTP_PASS en el archivo .env')
   }
+
+  const todosAdjuntos = [...attachments, ...adjuntos]
 
   const html = `
     <div style="font-family:Arial,sans-serif;max-width:700px;margin:0 auto">
@@ -24,12 +26,16 @@ export async function enviarCorreo({ to, subject, text, graficasHtml = '', attac
       <div style="background:#f9f9f9;border:1px solid #e0e0e0;border-top:none;border-radius:0 0 10px 10px;padding:24px;font-size:14px;line-height:1.7;color:#333">
         ${text.replace(/\n/g, '<br>')}
         ${graficasHtml}
+        ${todosAdjuntos.length ? '<p style="color:#1D9E75;font-weight:600;margin-top:16px">📎 Se adjuntan archivos a este correo.</p>' : ''}
       </div>
     </div>`
 
+  console.log('Enviando correo a:', to, 'con', todosAdjuntos.length, 'adjuntos')
+
   await transporter.sendMail({
-    from: `"UPMH Académico" <${process.env.SMTP_USER}>`,
-    to, subject, text, html, attachments
+    from:        `"UPMH Académico" <${process.env.SMTP_USER}>`,
+    to, subject, text, html,
+    attachments: todosAdjuntos
   })
 }
 
