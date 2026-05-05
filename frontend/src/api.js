@@ -71,4 +71,13 @@ export const limpiarParcial       = (parcialId)                       => api.del
 export const getEstadisticas      = (cuatriId)                        => api.get(`/cuatrimestres/${cuatriId}/estadisticas`)
 export const getTendencia         = (cuatriId, programaId)            => api.get(`/cuatrimestres/${cuatriId}/programas/${programaId}/tendencia`)
 
+// ── Memos ────────────────────────────────────────────────────────────────────
+export const getMemosConfig  = ()     => api.get('/memos/config')
+export const saveMemosConfig = (data) => api.post('/memos/config', data)
+export const getMemosFiles   = ()     => api.get('/memos/files')
+export const generateMemos   = ()     => api.post('/memos/generate')
+export const deleteHorario   = (name) => api.delete(`/memos/horarios/${encodeURIComponent(name)}`)
+
+// SSE se construye directamente con EventSource + ?token= en cada componente
+
 export default api

@@ -4,7 +4,6 @@ import { useToast } from './Toast.jsx'
 import axios from 'axios'
 
 const api = axios.create({ baseURL: import.meta.env.VITE_API_URL ?? '/api' })
-
 api.interceptors.request.use(config => {
   const token = localStorage.getItem('token')
   if (token) config.headers.Authorization = `Bearer ${token}`
@@ -33,7 +32,31 @@ function ModalConfirm({ mensaje, onAceptar, onCancelar }) {
   )
 }
 
-export default function Sidebar({ cuatrimestres, seleccion, onSelect, onReload, esAdmin, onLogout, onLogin, autenticado, vistaDocentes, onVerDocentes, vistaEstadisticas, onVerEstadisticas, mobileOpen, darkMode, onToggleDark }) {
+// ─── Encabezado de sección colapsable ─────────────────────────────────────────
+function SeccionHeader({ label, open, onToggle }) {
+  return (
+    <button
+      onClick={onToggle}
+      style={{
+        width: '100%', background: 'none', border: 'none', cursor: 'pointer',
+        padding: '8px 14px', display: 'flex', alignItems: 'center', gap: 6,
+        color: 'var(--text)', fontWeight: 700, fontSize: 12,
+        textTransform: 'uppercase', letterSpacing: '.06em',
+        borderTop: '1px solid var(--border)', marginTop: 4,
+      }}
+    >
+      <span style={{ transition: 'transform .2s', transform: open ? 'rotate(90deg)' : 'rotate(0deg)', display: 'inline-block', fontSize: 10 }}>›</span>
+      {label}
+    </button>
+  )
+}
+
+export default function Sidebar({
+  cuatrimestres, seleccion, onSelect, onReload, esAdmin, onLogout, onLogin,
+  autenticado, vistaDocentes, onVerDocentes, vistaEstadisticas, onVerEstadisticas,
+  mobileOpen, darkMode, onToggleDark,
+  vistaMemos, onVerMemos,
+}) {
   const [abiertos,     setAbiertos]     = useState({})
   const [programasMap, setProgramasMap] = useState({})
   const [modal,        setModal]        = useState(false)
@@ -42,7 +65,12 @@ export default function Sidebar({ cuatrimestres, seleccion, onSelect, onReload, 
   const [uploading,    setUploading]    = useState(false)
   const [uploadForm,   setUploadForm]   = useState({ programa: PROGRAMAS[0], numParcial: '1' })
   const [confirm,      setConfirm]      = useState(null)
-  const { addToast }                   = useToast()
+
+  // Secciones colapsables principales
+  const [secAprov, setSecAprov] = useState(true)
+  const [secMemos, setSecMemos] = useState(true)
+
+  const { addToast } = useToast()
 
   async function toggleCuatri(cuatri) {
     const id = cuatri.id
@@ -66,9 +94,7 @@ export default function Sidebar({ cuatrimestres, seleccion, onSelect, onReload, 
     const mes  = n.toLowerCase().includes('mayo') ? 5
                : n.toLowerCase().includes('sep')  ? 9 : 1
     await crearCuatrimestre({ nombre: n, orden: Number(year) * 10000 + mes * 100 })
-    setModal(false)
-    setNombre('')
-    onReload()
+    setModal(false); setNombre(''); onReload()
     addToast('Cuatrimestre creado correctamente', 'success')
   }
 
@@ -76,18 +102,14 @@ export default function Sidebar({ cuatrimestres, seleccion, onSelect, onReload, 
     if (!file) return
     setUploading(true)
     try {
-      const fd = new FormData()
-      fd.append('file', file)
+      const fd = new FormData(); fd.append('file', file)
       const prog = encodeURIComponent(uploadForm.programa)
       await api.post(`/parciales/${modalUpload.id}/${prog}/${uploadForm.numParcial}/upload`, fd)
-      await refreshProgramas(modalUpload.id)
-      onReload()
+      await refreshProgramas(modalUpload.id); onReload()
       addToast('Excel subido correctamente', 'success')
     } catch (e) {
       addToast('Error: ' + (e.response?.data?.error ?? e.message), 'error')
-    } finally {
-      setUploading(false)
-    }
+    } finally { setUploading(false) }
   }
 
   async function handleUploadPDFs(files) {
@@ -103,60 +125,43 @@ export default function Sidebar({ cuatrimestres, seleccion, onSelect, onReload, 
       const ok  = r.data.resultados.filter(x => !x.error).length
       const err = r.data.resultados.filter(x => x.error).length
       addToast(`PDFs procesados: ${ok} exitosos${err ? `, ${err} con error` : ''}`, err ? 'warning' : 'success')
-      await refreshProgramas(modalUpload.id)
-      onReload()
+      await refreshProgramas(modalUpload.id); onReload()
     } catch (e) {
       addToast('Error: ' + (e.response?.data?.error ?? e.message), 'error')
-    } finally {
-      setUploading(false)
-    }
+    } finally { setUploading(false) }
   }
 
-  function pedirConfirm(mensaje, accion) {
-    setConfirm({ mensaje, accion })
-  }
-
-  async function ejecutarConfirm() {
-    if (confirm?.accion) await confirm.accion()
-    setConfirm(null)
-  }
+  function pedirConfirm(mensaje, accion) { setConfirm({ mensaje, accion }) }
+  async function ejecutarConfirm() { if (confirm?.accion) await confirm.accion(); setConfirm(null) }
 
   async function handleEliminarCuatri(e, cuatri) {
     e.stopPropagation()
     pedirConfirm(`¿Eliminar "${cuatri.nombre}" y todos sus datos?`, async () => {
-      await eliminarCuatrimestre(cuatri.id)
-      addToast('Cuatrimestre eliminado', 'success')
-      onReload()
+      await eliminarCuatrimestre(cuatri.id); addToast('Cuatrimestre eliminado', 'success'); onReload()
     })
   }
 
   async function handleEliminarPrograma(e, cuatriId, prog) {
     e.stopPropagation()
     pedirConfirm(`¿Eliminar "${prog.nombre}" y todos sus parciales?`, async () => {
-      await eliminarPrograma(cuatriId, prog.id)
-      addToast('Programa eliminado', 'success')
-      await refreshProgramas(cuatriId)
-      onReload()
+      await eliminarPrograma(cuatriId, prog.id); addToast('Programa eliminado', 'success')
+      await refreshProgramas(cuatriId); onReload()
     })
   }
 
   async function handleEliminarParcial(e, cuatriId, programaId, parcial) {
     e.stopPropagation()
     pedirConfirm(`¿Eliminar "${parcial.label}"?`, async () => {
-      await eliminarParcial(cuatriId, programaId, parcial.id)
-      addToast('Parcial eliminado', 'success')
-      await refreshProgramas(cuatriId)
-      onReload()
+      await eliminarParcial(cuatriId, programaId, parcial.id); addToast('Parcial eliminado', 'success')
+      await refreshProgramas(cuatriId); onReload()
     })
   }
 
   async function handleLimpiarParcial(e, cuatriId, programaId, parcial) {
     e.stopPropagation()
     pedirConfirm(`¿Limpiar datos de "${parcial.label}"?`, async () => {
-      await limpiarParcial(parcial.id)
-      addToast('Datos del parcial limpiados', 'success')
-      await refreshProgramas(cuatriId)
-      onReload()
+      await limpiarParcial(parcial.id); addToast('Datos del parcial limpiados', 'success')
+      await refreshProgramas(cuatriId); onReload()
     })
   }
 
@@ -165,149 +170,159 @@ export default function Sidebar({ cuatrimestres, seleccion, onSelect, onReload, 
   return (
     <>
       <aside className={`sidebar ${mobileOpen ? 'mobile-open' : ''}`}>
+        {/* Logo */}
         <div className="sidebar-logo">
-          Aprovechamiento
+          Coordinación Administración
           <span>UPMH — Sistema académico</span>
         </div>
 
-        <div className="sidebar-section">
-          <div className="sidebar-label">Cuatrimestres</div>
-          {cuatrimestres.map(c => (
-            <div key={c.id}>
-              <div style={{ display:'flex', alignItems:'center' }}>
-                <button
-                  className={`cuatri-btn ${abiertos[c.id] ? 'open' : ''}`}
-                  style={{ flex:1 }}
-                  onClick={() => toggleCuatri(c)}
-                >
-                  <span>{c.nombre}</span>
-                  <span className="arrow">›</span>
-                </button>
-                {esAdmin && (
-                  <button
-                    onClick={e => handleEliminarCuatri(e, c)}
-                    style={{ background:'none', border:'none', cursor:'pointer', color:'#ccc', fontSize:14, padding:'0 8px', lineHeight:1 }}
-                    title="Eliminar cuatrimestre"
-                  >
-                    ✕
-                  </button>
-                )}
-              </div>
+        {/* ── SECCIÓN APROVECHAMIENTO ── */}
+        <SeccionHeader label="📊 Aprovechamiento" open={secAprov} onToggle={() => setSecAprov(v => !v)} />
 
-              <div className={`parciales ${abiertos[c.id] ? 'open' : ''}`}>
-                {(programasMap[c.id] || []).map(prog => (
-                  <div key={prog.id}>
-                    <div style={{ display:'flex', alignItems:'center', padding:'5px 8px 2px 18px' }}>
-                      <span style={{ fontSize:11, fontWeight:700, color:'#aaa', textTransform:'uppercase', letterSpacing:'.04em', flex:1 }}>
-                        {prog.nombre.length > 24 ? prog.nombre.slice(0,24)+'…' : prog.nombre}
-                      </span>
-                      {esAdmin && (
-                        <button
-                          onClick={e => handleEliminarPrograma(e, c.id, prog)}
-                          style={{ background:'none', border:'none', cursor:'pointer', color:'#ccc', fontSize:12, padding:'0 6px' }}
-                          title="Eliminar programa"
-                        >
-                          ✕
-                        </button>
-                      )}
-                    </div>
+        {secAprov && (
+          <>
+            {/* Lista de cuatrimestres */}
+            <div className="sidebar-section">
+              <div className="sidebar-label">Cuatrimestres</div>
+              {cuatrimestres.map(c => (
+                <div key={c.id}>
+                  <div style={{ display:'flex', alignItems:'center' }}>
+                    <button
+                      className={`cuatri-btn ${abiertos[c.id] ? 'open' : ''}`}
+                      style={{ flex:1 }}
+                      onClick={() => toggleCuatri(c)}
+                    >
+                      <span>{c.nombre}</span>
+                      <span className="arrow">›</span>
+                    </button>
+                    {esAdmin && (
+                      <button
+                        onClick={e => handleEliminarCuatri(e, c)}
+                        style={{ background:'none', border:'none', cursor:'pointer', color:'#ccc', fontSize:14, padding:'0 8px', lineHeight:1 }}
+                        title="Eliminar cuatrimestre"
+                      >✕</button>
+                    )}
+                  </div>
 
-                    {prog.parciales.map(p => (
-                      <div key={p.id} style={{ display:'flex', alignItems:'center' }}>
-                        <button
-                          className={`parcial-btn ${seleccion?.parcial.id === p.id ? 'active' : ''}`}
-                          onClick={() => onSelect(c, p, prog)}
-                          style={{ paddingLeft:28, flex:1, textAlign:'left', display:'flex', justifyContent:'space-between', alignItems:'center' }}
-                        >
-                          <span>{p.label}</span>
-                          {p.promedio && (
-                            <span style={{ fontSize:10, color: seleccion?.parcial.id === p.id ? '#fff' : '#1D9E75', fontWeight:600, marginRight:4 }}>
-                              {p.promedio}
-                            </span>
+                  <div className={`parciales ${abiertos[c.id] ? 'open' : ''}`}>
+                    {(programasMap[c.id] || []).map(prog => (
+                      <div key={prog.id}>
+                        <div style={{ display:'flex', alignItems:'center', padding:'5px 8px 2px 18px' }}>
+                          <span style={{ fontSize:11, fontWeight:700, color:'#aaa', textTransform:'uppercase', letterSpacing:'.04em', flex:1 }}>
+                            {prog.nombre.length > 24 ? prog.nombre.slice(0,24)+'…' : prog.nombre}
+                          </span>
+                          {esAdmin && (
+                            <button
+                              onClick={e => handleEliminarPrograma(e, c.id, prog)}
+                              style={{ background:'none', border:'none', cursor:'pointer', color:'#ccc', fontSize:12, padding:'0 6px' }}
+                              title="Eliminar programa"
+                            >✕</button>
                           )}
-                        </button>
-                        {esAdmin && (
-                          <div style={{ display:'flex', gap:2, paddingRight:6 }}>
+                        </div>
+
+                        {prog.parciales.map(p => (
+                          <div key={p.id} style={{ display:'flex', alignItems:'center' }}>
                             <button
-                              onClick={e => handleLimpiarParcial(e, c.id, prog.id, p)}
-                              style={{ background:'none', border:'none', cursor:'pointer', color:'#BA7517', fontSize:11, padding:'0 4px' }}
-                              title="Limpiar datos"
+                              className={`parcial-btn ${seleccion?.parcial.id === p.id ? 'active' : ''}`}
+                              onClick={() => onSelect(c, p, prog)}
+                              style={{ paddingLeft:28, flex:1, textAlign:'left', display:'flex', justifyContent:'space-between', alignItems:'center' }}
                             >
-                              ↺
+                              <span>{p.label}</span>
+                              {p.promedio && (
+                                <span style={{ fontSize:10, color: seleccion?.parcial.id === p.id ? '#fff' : '#1D9E75', fontWeight:600, marginRight:4 }}>
+                                  {p.promedio}
+                                </span>
+                              )}
                             </button>
-                            <button
-                              onClick={e => handleEliminarParcial(e, c.id, prog.id, p)}
-                              style={{ background:'none', border:'none', cursor:'pointer', color:'#ccc', fontSize:12, padding:'0 4px' }}
-                              title="Eliminar parcial"
-                            >
-                              ✕
-                            </button>
+                            {esAdmin && (
+                              <div style={{ display:'flex', gap:2, paddingRight:6 }}>
+                                <button
+                                  onClick={e => handleLimpiarParcial(e, c.id, prog.id, p)}
+                                  style={{ background:'none', border:'none', cursor:'pointer', color:'#BA7517', fontSize:11, padding:'0 4px' }}
+                                  title="Limpiar datos"
+                                >↺</button>
+                                <button
+                                  onClick={e => handleEliminarParcial(e, c.id, prog.id, p)}
+                                  style={{ background:'none', border:'none', cursor:'pointer', color:'#ccc', fontSize:12, padding:'0 4px' }}
+                                  title="Eliminar parcial"
+                                >✕</button>
+                              </div>
+                            )}
                           </div>
-                        )}
+                        ))}
                       </div>
                     ))}
-                  </div>
-                ))}
 
-                {esAdmin && (
-                  <div style={{ display:'flex', flexDirection:'column' }}>
-                    <button
-                      className="parcial-btn"
-                      style={{ color:'#1D9E75', paddingLeft:18 }}
-                      onClick={() => { setUploadForm({ programa: PROGRAMAS[0], numParcial:'1' }); setModalUpload(c) }}
-                    >
-                      + Subir parcial
-                    </button>
-                    <button
-                      className="parcial-btn"
-                      style={{ color:'#378ADD', paddingLeft:18 }}
-                      onClick={() => { setUploadForm({ programa: PROGRAMAS[0], numParcial:'1' }); setModalUpload(c) }}
-                    >
-                      + Agregar programa
-                    </button>
+                    {esAdmin && (
+                      <div style={{ display:'flex', flexDirection:'column' }}>
+                        <button
+                          className="parcial-btn"
+                          style={{ color:'#1D9E75', paddingLeft:18 }}
+                          onClick={() => { setUploadForm({ programa: PROGRAMAS[0], numParcial:'1' }); setModalUpload(c) }}
+                        >+ Subir parcial</button>
+                        <button
+                          className="parcial-btn"
+                          style={{ color:'#378ADD', paddingLeft:18 }}
+                          onClick={() => { setUploadForm({ programa: PROGRAMAS[0], numParcial:'1' }); setModalUpload(c) }}
+                        >+ Agregar programa</button>
+                      </div>
+                    )}
                   </div>
-                )}
-              </div>
+                </div>
+              ))}
             </div>
-          ))}
-        </div>
 
-        <div className="sidebar-section">
-          <button
-            className={`cuatri-btn ${vistaEstadisticas ? 'open' : ''}`}
-            onClick={onVerEstadisticas}
-            style={{ fontWeight: vistaEstadisticas ? 700 : 600, color: vistaEstadisticas ? '#1D9E75' : '#555' }}
-          >
-            <span>📊 Estadísticas globales</span>
-          </button>
-          {esAdmin && (
-            <button
-              className={`cuatri-btn ${vistaDocentes ? 'open' : ''}`}
-              onClick={onVerDocentes}
-              style={{ fontWeight: vistaDocentes ? 700 : 600, color: vistaDocentes ? '#1D9E75' : '#555' }}
-            >
-              <span>👤 Docentes y correos</span>
-            </button>
-          )}
-        </div>
+            {/* Estadísticas y Docentes */}
+            <div className="sidebar-section">
+              <button
+                className={`cuatri-btn ${vistaEstadisticas ? 'open' : ''}`}
+                onClick={onVerEstadisticas}
+                style={{ fontWeight: vistaEstadisticas ? 700 : 600, color: vistaEstadisticas ? '#1D9E75' : '#555' }}
+              >
+                <span>📈 Estadísticas globales</span>
+              </button>
+              {esAdmin && (
+                <button
+                  className={`cuatri-btn ${vistaDocentes ? 'open' : ''}`}
+                  onClick={onVerDocentes}
+                  style={{ fontWeight: vistaDocentes ? 700 : 600, color: vistaDocentes ? '#1D9E75' : '#555' }}
+                >
+                  <span>👤 Docentes y correos</span>
+                </button>
+              )}
+            </div>
 
-        {esAdmin && (
+            {esAdmin && (
+              <div className="sidebar-section">
+                <button className="sidebar-add" onClick={() => setModal(true)}>
+                  + Agregar cuatrimestre
+                </button>
+              </div>
+            )}
+          </>
+        )}
+
+        {/* ── SECCIÓN MEMOS ── */}
+        <SeccionHeader label="📄 Memos" open={secMemos} onToggle={() => setSecMemos(v => !v)} />
+
+        {secMemos && (
           <div className="sidebar-section">
-            <button className="sidebar-add" onClick={() => setModal(true)}>
-              + Agregar cuatrimestre
+            <button
+              className={`cuatri-btn ${vistaMemos ? 'open' : ''}`}
+              onClick={onVerMemos}
+              style={{ fontWeight: vistaMemos ? 700 : 600, color: vistaMemos ? '#1D9E75' : '#555' }}
+            >
+              <span>🗂 Generador de Memos</span>
             </button>
           </div>
         )}
 
+        {/* ── Footer ── */}
         <div style={{ marginTop:'auto', padding:'12px 14px', borderTop:`1px solid var(--border)` }}>
-  <button
-    className="btn"
-    style={{ width:'100%', fontSize:11, marginBottom:6 }}
-    onClick={onToggleDark}
-  >
-    {darkMode ? '☀️ Modo claro' : '🌙 Modo oscuro'}
-  </button>
-  {autenticado ? (
+          <button className="btn" style={{ width:'100%', fontSize:11, marginBottom:6 }} onClick={onToggleDark}>
+            {darkMode ? '☀️ Modo claro' : '🌙 Modo oscuro'}
+          </button>
+          {autenticado ? (
             <>
               <div style={{ fontSize:11, color:'#aaa', marginBottom:6 }}>
                 {usuario} · {esAdmin ? 'Administrador' : 'Observador'}
@@ -317,23 +332,16 @@ export default function Sidebar({ cuatrimestres, seleccion, onSelect, onReload, 
               </button>
             </>
           ) : (
-            <button
-              className="btn btn-primary"
-              style={{ width:'100%', fontSize:11 }}
-              onClick={onLogin}
-            >
+            <button className="btn btn-primary" style={{ width:'100%', fontSize:11 }} onClick={onLogin}>
               🔑 Iniciar sesión
             </button>
           )}
         </div>
       </aside>
 
+      {/* ── Modales ── */}
       {confirm && (
-        <ModalConfirm
-          mensaje={confirm.mensaje}
-          onAceptar={ejecutarConfirm}
-          onCancelar={() => setConfirm(null)}
-        />
+        <ModalConfirm mensaje={confirm.mensaje} onAceptar={ejecutarConfirm} onCancelar={() => setConfirm(null)} />
       )}
 
       {modal && (
@@ -343,8 +351,7 @@ export default function Sidebar({ cuatrimestres, seleccion, onSelect, onReload, 
             <div className="field">
               <label>Nombre</label>
               <input
-                type="text"
-                list="sugerencias"
+                type="text" list="sugerencias"
                 placeholder="ej. Enero-Abril 2027"
                 value={nombre}
                 onChange={e => setNombre(e.target.value)}
@@ -370,52 +377,29 @@ export default function Sidebar({ cuatrimestres, seleccion, onSelect, onReload, 
         <div className="modal-bg" onClick={e => e.target === e.currentTarget && setModalUpload(null)}>
           <div className="modal">
             <h2>Subir parcial — {modalUpload.nombre}</h2>
-
             <div className="field">
               <label>Programa educativo</label>
-              <select
-                value={uploadForm.programa}
-                onChange={e => setUploadForm(f => ({ ...f, programa: e.target.value }))}
-              >
+              <select value={uploadForm.programa} onChange={e => setUploadForm(f => ({ ...f, programa: e.target.value }))}>
                 {PROGRAMAS.map(p => <option key={p} value={p}>{p}</option>)}
               </select>
             </div>
-
             <div className="field">
               <label>Número de parcial</label>
-              <select
-                value={uploadForm.numParcial}
-                onChange={e => setUploadForm(f => ({ ...f, numParcial: e.target.value }))}
-              >
+              <select value={uploadForm.numParcial} onChange={e => setUploadForm(f => ({ ...f, numParcial: e.target.value }))}>
                 <option value="1">1er Parcial</option>
                 <option value="2">2do Parcial</option>
                 <option value="3">3er Parcial</option>
               </select>
             </div>
-
             <div className="field">
               <label>Archivo Excel (.xlsx)</label>
-              <input
-                type="file"
-                accept=".xlsx,.xls"
-                onChange={e => handleUploadExcel(e.target.files[0])}
-              />
+              <input type="file" accept=".xlsx,.xls" onChange={e => handleUploadExcel(e.target.files[0])} />
             </div>
-
             <div className="field">
               <label>PDFs de calificaciones (opcional)</label>
-              <input
-                type="file"
-                accept=".pdf"
-                multiple
-                onChange={e => handleUploadPDFs(e.target.files)}
-              />
+              <input type="file" accept=".pdf" multiple onChange={e => handleUploadPDFs(e.target.files)} />
             </div>
-
-            {uploading && (
-              <div className="loading"><span className="spinner" /> Procesando…</div>
-            )}
-
+            {uploading && <div className="loading"><span className="spinner" /> Procesando…</div>}
             <div className="modal-btns">
               <button className="btn" onClick={() => setModalUpload(null)}>Cerrar</button>
             </div>

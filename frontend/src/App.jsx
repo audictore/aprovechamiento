@@ -5,6 +5,7 @@ import Grupos       from './pages/Grupos.jsx'
 import Docentes     from './pages/Docentes.jsx'
 import Estadisticas from './pages/Estadisticas.jsx'
 import Login        from './pages/Login.jsx'
+import MemosPage    from './pages/Memos.jsx'
 import { getCuatrimestres, verificar } from './api.js'
 
 export default function App() {
@@ -59,6 +60,8 @@ export default function App() {
     setVista('estadisticas')
   }
 
+  function handleVerMemos() { setVista('memos'); setMenuAbierto(false) }
+
   function handleSelect(cuatri, parcial, programa) {
     setSeleccion({ cuatri, parcial, programa })
     setVista('parcial')
@@ -105,7 +108,7 @@ export default function App() {
       {/* Header móvil */}
       <div className="mobile-header">
         <button className="hamburger" onClick={() => setMenuAbierto(true)}>☰</button>
-        <div style={{ fontSize:14, fontWeight:700, color:'#1D9E75' }}>Aprovechamiento UPMH</div>
+        <div style={{ fontSize:14, fontWeight:700, color:'#1D9E75' }}>Coordinación Administración</div>
         <div style={{ display:'flex', gap:6 }}>
           <button
             className="btn"
@@ -140,10 +143,13 @@ export default function App() {
         mobileOpen={menuAbierto}
         darkMode={darkMode}
         onToggleDark={() => setDarkMode(d => !d)}
+        vistaMemos={vista === 'memos'}
+        onVerMemos={handleVerMemos}
       />
 
       <main className="main-area">
         {vista === 'docentes' && esAdmin && <Docentes esAdmin={esAdmin} />}
+        {vista === 'memos'    && autenticado && <MemosPage esAdmin={esAdmin} />}
         {vista === 'estadisticas' && <Estadisticas cuatrimestres={cuatrimestres} />}
         {vista === 'parcial' && !seleccion && <Estadisticas cuatrimestres={cuatrimestres} />}
         {vista === 'parcial' && seleccion && (

@@ -7,6 +7,7 @@ import authRouter          from './routes/auth.js'
 import cuatrimestresRouter from './routes/cuatrimestres.js'
 import parcialesRouter     from './routes/parciales.js'
 import docentesRouter      from './routes/docentes.js'
+import memosRouter         from './routes/memos.js'
 import { requireAuth } from './middleware/auth.js'
 
 const app     = express()
@@ -20,6 +21,7 @@ app.use('/auth',          authRouter)
 app.use('/cuatrimestres', cuatrimestresRouter)  // sin requireAuth
 app.use('/docentes',      requireAuth, docentesRouter)
 app.use('/parciales', parcialesRouter)
+app.use('/memos',     requireAuth, memosRouter)
 
 // Servir frontend en producción
 const frontendDist = path.join(__dirname, '../../frontend/dist')

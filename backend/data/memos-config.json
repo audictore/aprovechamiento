@@ -1,0 +1,43 @@
+{
+  "cuatrimestre": "Mayo - Agosto 2026",
+  "anio_ref": 2026,
+  "ref_prefix": "UPMH",
+  "ref_number": "18",
+  "fecha_modo": "hoy",
+  "programa_educativo": {
+    "LAGE": {
+      "nombre_completo": "Licenciatura en Administración y Gestión Empresarial",
+      "nombre_corto": "LAGE",
+      "coordinador": {
+        "nombre": "Mtro. Andres Dimas Espino",
+        "cargo_corto": "Director del PE de LAGE",
+        "cargo_largo": "Director del PE de la Licenciatura en Administración y Gestión Empresarial"
+      }
+    },
+    "LAD": {
+      "nombre_completo": "Licenciatura en Administración",
+      "nombre_corto": "LAD",
+      "coordinador": {
+        "nombre": "Mtro. Andres Dimas Espino",
+        "cargo_corto": "Director del PE de LAD",
+        "cargo_largo": "Director del PE de la Licenciatura en Administración y Gestión Empresarial"
+      }
+    }
+  },
+  "secretaria_academica": {
+    "nombre": "Dra. Francisca Lorena Gómez Melo",
+    "cargo_corto": "Secretaria Académica",
+    "cargo_largo": "Secretaria Académica de la UPMH"
+  },
+  "categoria_cargo": {
+    "PTC Investigador": "Profesor por Tiempo Completo",
+    "PTC": "Profesor por Tiempo Completo",
+    "PA": "Profesor por Asignatura",
+    "Director": "Director del PE",
+    "Técnico Académico": "Técnico Académico"
+  },
+  "asunto_por_pe": {
+    "LAGE": "Entrega de Horario a docentes de LAD/LAGE.",
+    "LAD": "Entrega de Horario a docentes de LAD/LAGE."
+  }
+}
