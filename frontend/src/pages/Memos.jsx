@@ -343,6 +343,22 @@ function SeccionGenerar({ files, onDone }) {
 // ─── Sección Resultados ───────────────────────────────────────────────────────
 function SeccionResultados({ files }) {
   const token = localStorage.getItem('token')
+  const [descargando, setDescargando] = useState(false)
+
+  async function descargarTodos() {
+    setDescargando(true)
+    for (const f of files.output) {
+      const a = document.createElement('a')
+      a.href = `${BASE_URL}/memos/download/${encodeURIComponent(f.name)}?token=${token}`
+      a.download = f.name
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      // Pequeña pausa para que el navegador procese cada descarga
+      await new Promise(r => setTimeout(r, 400))
+    }
+    setDescargando(false)
+  }
 
   if (!files?.output?.length) {
     return (
@@ -354,6 +370,20 @@ function SeccionResultados({ files }) {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+      {/* Botón descargar todos */}
+      <div style={{ marginBottom: 8 }}>
+        <button
+          className="btn btn-primary"
+          onClick={descargarTodos}
+          disabled={descargando}
+          style={{ fontSize: 12, padding: '7px 16px' }}
+        >
+          {descargando
+            ? <><span className="spinner" /> Descargando…</>
+            : `⬇ Descargar todos — ${files.output.length} archivo${files.output.length !== 1 ? 's' : ''}`}
+        </button>
+      </div>
+
       {files.output.map(f => (
         <div
           key={f.name}

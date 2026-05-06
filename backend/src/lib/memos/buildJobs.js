@@ -97,23 +97,53 @@ export async function buildJobs(config, inputDir, outputDir, log = console.log) 
     const cargoDocente = getCargo(docente, config)
     const tipoPTC = esTipoPTC(docente)
 
-    // Observación de la tabla de actividades
-    function getObsTexto() {
-      const partes = []
-      if (docente.asignatura) partes.push(docente.asignatura)
-      if (docente.proyectoInvestigacion) partes.push(docente.proyectoInvestigacion)
-      return partes.join('. ')
+    // Divide el campo "asignatura" (multilínea) en líneas individuales
+    function asigLineas() {
+      return (docente.asignatura || '').split('\n').map(s => s.trim()).filter(Boolean)
     }
 
-    // Para PA: cada actividad tiene su propia obs
+    // Observación para PTC: devuelve todas las líneas (asignatura + proyecto)
+    function getObsTexto() {
+      const lineas = [
+        ...asigLineas(),
+        ...(docente.proyectoInvestigacion || '').split('\n').map(s => s.trim()).filter(Boolean),
+      ]
+      return lineas.join('\n')
+    }
+
+    // Observación como array de strings (para renderizar como lista con bullets)
+    function getObsLineas() {
+      const lineas = [
+        ...asigLineas(),
+        ...(docente.proyectoInvestigacion || '').split('\n').map(s => s.trim()).filter(Boolean),
+      ]
+      return lineas.length ? lineas : []
+    }
+
+    // Para PA: observaciones filtradas por tipo de actividad (devuelve array)
     function getObsPorActividad(actividadLabel) {
       const al = actividadLabel.toLowerCase()
-      if (al.includes('tutor'))       return 'Tutoría'
-      if (al.includes('asesor'))      return 'Asesoría'
-      if (al.includes('preparaci'))   return 'Preparación'
-      if (al.includes('investigaci')) return 'Investigación'
-      if (al.includes('gesti'))       return 'Gestión'
-      return docente.asignatura || 'Docencia'
+      const lineas = asigLineas()
+
+      if (al.includes('docenci')) {
+        const doc = lineas.filter(l => !/tutori/i.test(l) && !/asesor/i.test(l))
+        return doc.length ? doc : []
+      }
+      if (al.includes('tutor')) {
+        const tut = lineas.filter(l => /tutori/i.test(l))
+        return tut.length ? tut : ['Tutoría']
+      }
+      if (al.includes('asesor')) {
+        const ase = lineas.filter(l => /asesor/i.test(l))
+        return ase.length ? ase : ['Asesoría']
+      }
+      if (al.includes('preparaci')) return ['Preparación de clase']
+      if (al.includes('investigaci')) {
+        const inv = (docente.proyectoInvestigacion || '').split('\n').map(s => s.trim()).filter(Boolean)
+        return inv.length ? inv : ['Investigación']
+      }
+      if (al.includes('gesti')) return ['Gestión institucional']
+      return []
     }
 
     const referencia = `${ref_prefix}/${peKey}/${String(refCounter).padStart(3, '0')}/${anio_ref}`
@@ -151,6 +181,7 @@ export async function buildJobs(config, inputDir, outputDir, log = console.log) 
       actividades,
       totalHoras,
       getObsTexto,
+      getObsLineas,
       getObsPorActividad,
       horarioXlsx: horario?.file || null,
       horarioSheetName: horario?.sheetName || null,

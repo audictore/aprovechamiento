@@ -4,6 +4,7 @@ import fs from 'fs'
 import { fileURLToPath } from 'url'
 import multer from 'multer'
 import jwt from 'jsonwebtoken'
+import archiver from 'archiver'
 import { buildJobs } from '../lib/memos/buildJobs.js'
 import { generateDocx } from '../lib/memos/generateDocx.js'
 
@@ -12,7 +13,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const SECRET = process.env.JWT_SECRET || 'upmh_secret_2026'
 
 // Rutas de datos
-const DATA_DIR    = path.join(__dirname, '../../../data')
+const DATA_DIR    = path.join(__dirname, '../../data')
 const INPUT_DIR   = path.join(DATA_DIR, 'memos-input')
 const HORARIOS_DIR = path.join(INPUT_DIR, 'horarios')
 const OUTPUT_DIR  = path.join(DATA_DIR, 'memos-output')
@@ -177,6 +178,26 @@ router.get('/download/:filename', (req, res) => {
   const filePath = path.join(OUTPUT_DIR, filename)
   if (!fs.existsSync(filePath)) return res.status(404).json({ error: 'Archivo no encontrado' })
   res.download(filePath, filename)
+})
+
+// GET /memos/download-all — descarga todos los .docx como ZIP
+router.get('/download-all', (req, res) => {
+  const archivos = fs.existsSync(OUTPUT_DIR)
+    ? fs.readdirSync(OUTPUT_DIR).filter(f => f.endsWith('.docx'))
+    : []
+
+  if (!archivos.length) return res.status(404).json({ error: 'No hay documentos generados' })
+
+  const fecha = new Date().toISOString().slice(0, 10)
+  res.setHeader('Content-Type', 'application/zip')
+  res.setHeader('Content-Disposition', `attachment; filename="memos_${fecha}.zip"`)
+
+  const archive = archiver('zip', { zlib: { level: 6 } })
+  archive.on('error', err => { console.error(err); res.end() })
+  archive.pipe(res)
+
+  for (const f of archivos) archive.file(path.join(OUTPUT_DIR, f), { name: f })
+  archive.finalize()
 })
 
 // DELETE /memos/horarios/:filename — eliminar un horario subido

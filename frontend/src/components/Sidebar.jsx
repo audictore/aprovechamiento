@@ -302,19 +302,22 @@ export default function Sidebar({
           </>
         )}
 
-        {/* ── SECCIÓN MEMOS ── */}
-        <SeccionHeader label="📄 Memos" open={secMemos} onToggle={() => setSecMemos(v => !v)} />
-
-        {secMemos && (
-          <div className="sidebar-section">
-            <button
-              className={`cuatri-btn ${vistaMemos ? 'open' : ''}`}
-              onClick={onVerMemos}
-              style={{ fontWeight: vistaMemos ? 700 : 600, color: vistaMemos ? '#1D9E75' : '#555' }}
-            >
-              <span>🗂 Generador de Memos</span>
-            </button>
-          </div>
+        {/* ── SECCIÓN MEMOS (solo admin) ── */}
+        {esAdmin && (
+          <>
+            <SeccionHeader label="📄 Memos" open={secMemos} onToggle={() => setSecMemos(v => !v)} />
+            {secMemos && (
+              <div className="sidebar-section">
+                <button
+                  className={`cuatri-btn ${vistaMemos ? 'open' : ''}`}
+                  onClick={onVerMemos}
+                  style={{ fontWeight: vistaMemos ? 700 : 600, color: vistaMemos ? '#1D9E75' : '#555' }}
+                >
+                  <span>🗂 Generador de Memos</span>
+                </button>
+              </div>
+            )}
+          </>
         )}
 
         {/* ── Footer ── */}

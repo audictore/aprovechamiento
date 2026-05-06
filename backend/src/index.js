@@ -21,6 +21,12 @@ app.use('/auth',          authRouter)
 app.use('/cuatrimestres', cuatrimestresRouter)  // sin requireAuth
 app.use('/docentes',      requireAuth, docentesRouter)
 app.use('/parciales', parcialesRouter)
+// Para SSE y descargas: links <a> y EventSource no mandan headers, el token llega por ?token=
+app.use('/memos', (req, _res, next) => {
+  if (req.query.token && !req.headers.authorization)
+    req.headers.authorization = `Bearer ${req.query.token}`
+  next()
+})
 app.use('/memos',     requireAuth, memosRouter)
 
 // Servir frontend en producción
