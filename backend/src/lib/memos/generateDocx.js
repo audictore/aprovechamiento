@@ -178,7 +178,7 @@ function buildEncabezadoTable(job) {
     return new Paragraph({
       alignment: AlignmentType.LEFT,
       spacing: { before: 0, after: 0, line: 240, lineRule: 'auto' },
-      children: [new TextRun({ text: String(text ?? ''), bold, size: PT(10), font: 'Arial' })],
+      children: [new TextRun({ text: String(text ?? ''), bold, size: PT(9), font: 'Arial' })],
     })
   }
   function hdrBlank() {
@@ -241,12 +241,12 @@ const ACT_TOTAL = ACT_W1 + ACT_W2 + ACT_W3  // 8955
 function buildActividadesTable(job) {
   const REF_OBS = 'obs-bullets'
 
-  // Párrafo de bullet — Calibri 13pt igual que la plantilla original
+  // Párrafo de bullet — Calibri 9pt
   function obsBulletPara(text) {
     return new Paragraph({
       numbering: { reference: REF_OBS, level: 0 },
       spacing: { before: 0, after: 0, line: 240, lineRule: 'auto' },
-      children: [new TextRun({ text: String(text), font: 'Calibri', size: PT(13) })],
+      children: [new TextRun({ text: String(text), font: 'Calibri', size: PT(9) })],
     })
   }
 
@@ -357,165 +357,160 @@ function buildActividadesTable(job) {
   }), numbering: REF_OBS }
 }
 
+// ─── Tabla de destinatarios (5 columnas, cabecera de 2 filas) ────────────────
+
+const GRAY_HDR = 'bfbfbf'  // gris de la cabecera de destinatarios
+
+// Columnas: etiqueta | nombre | cargo | firma | fecha  (suman CONT_W)
+const DC = [608, 2002, 1869, 2230, 2320]   // total = 9029 = CONT_W
+
+function buildDestinatariosTable(job, tableWidth) {
+  const tw = tableWidth ?? CONT_W
+
+  // Escalar columnas proporcionalmente si el ancho difiere
+  let cols
+  if (tw === CONT_W) {
+    cols = DC
+  } else {
+    const ratio = tw / CONT_W
+    const scaled = DC.map(w => Math.round(w * ratio))
+    // Ajustar último para que sumen exactamente tw
+    const diff = tw - scaled.reduce((a, b) => a + b, 0)
+    scaled[scaled.length - 1] += diff
+    cols = scaled
+  }
+
+  function dHdr(text, colSpan, wDXA, bold = true) {
+    return new TableCell({
+      columnSpan: colSpan,
+      borders: thinBorder,
+      shading: { type: ShadingType.CLEAR, fill: GRAY_HDR },
+      verticalAlign: VerticalAlign.CENTER,
+      width: { size: wDXA, type: WidthType.DXA },
+      margins: { top: 0, bottom: 0, left: 40, right: 40 },
+      children: [new Paragraph({
+        alignment: AlignmentType.CENTER,
+        spacing: { before: 0, after: 0, line: 240, lineRule: 'auto' },
+        children: [new TextRun({ text, bold, size: PT(9) })],
+      })],
+    })
+  }
+
+  function dLabel(text) {
+    return new TableCell({
+      borders: thinBorder,
+      shading: { type: ShadingType.CLEAR, fill: GRAY_HDR },
+      verticalAlign: VerticalAlign.CENTER,
+      width: { size: cols[0], type: WidthType.DXA },
+      margins: { top: 0, bottom: 0, left: 40, right: 40 },
+      children: [new Paragraph({
+        alignment: AlignmentType.CENTER,
+        spacing: { before: 0, after: 0, line: 240, lineRule: 'auto' },
+        children: [new TextRun({ text, bold: true, size: PT(9) })],
+      })],
+    })
+  }
+
+  function dData(text, colIdx, bold = false) {
+    return new TableCell({
+      borders: thinBorder,
+      shading: { type: ShadingType.CLEAR, fill: 'FFFFFF' },
+      verticalAlign: VerticalAlign.CENTER,
+      width: { size: cols[colIdx], type: WidthType.DXA },
+      margins: { top: 0, bottom: 0, left: 40, right: 40 },
+      children: [new Paragraph({
+        spacing: { before: 0, after: 0, line: 240, lineRule: 'auto' },
+        children: [new TextRun({ text, bold, size: PT(9) })],
+      })],
+    })
+  }
+
+  return new Table({
+    width: { size: tw, type: WidthType.DXA },
+    columnWidths: cols,
+    rows: [
+      // Cabecera fila 1
+      new TableRow({
+        children: [
+          dHdr('Lista de',          1, cols[0]),
+          dHdr('Destinatarios:',    2, cols[1] + cols[2]),
+          dHdr('Acuse de recibido', 2, cols[3] + cols[4]),
+        ],
+      }),
+      // Cabecera fila 2
+      new TableRow({
+        children: [
+          dHdr('',         1, cols[0], false),
+          dHdr('Nombre:',  1, cols[1], false),
+          dHdr('Cargo:',   1, cols[2], false),
+          dHdr('Firma',    1, cols[3], false),
+          dHdr('Fecha',    1, cols[4], false),
+        ],
+      }),
+      // Para: → coordinador
+      new TableRow({
+        children: [
+          dLabel('Para:'),
+          dData(job.coordinador.nombre,      1, true),
+          dData(job.coordinador.cargo_corto, 2, true),
+          dData('', 3),
+          dData('', 4),
+        ],
+      }),
+      // C.c.p. → secretaria
+      new TableRow({
+        children: [
+          dLabel('C.c.p.'),
+          dData(job.secretaria.nombre + '.', 1, true),
+          dData(job.secretaria.cargo_corto,  2, true),
+          dData('', 3),
+          dData('', 4),
+        ],
+      }),
+      // C.c.p. → Recursos Humanos
+      new TableRow({
+        children: [
+          dLabel('C.c.p.'),
+          dData('Recursos Humanos', 1, true),
+          dData('Recursos Humanos', 2, true),
+          dData('', 3),
+          dData('', 4),
+        ],
+      }),
+    ],
+  })
+}
+
 // ─── Sección de firmas ────────────────────────────────────────────────────────
 
 function buildFirmasSection(job) {
   const elements = []
 
-  // ATENTAMENTE (bold, sin punto superíndice — igual que la plantilla original)
+  // ATENTAMENTE
   elements.push(new Paragraph({
     alignment: AlignmentType.CENTER,
     spacing: { before: 200, after: 0, line: 240, lineRule: 'auto' },
-    children: [
-      new TextRun({ text: 'ATENTAMENTE', bold: true }),
-    ],
+    children: [new TextRun({ text: 'ATENTAMENTE', bold: true })],
   }))
-
   elements.push(para('', { spaceBefore: 0, spaceAfter: 0 }))
   elements.push(para('', { spaceBefore: 0, spaceAfter: 0 }))
 
-  // Línea de firma del docente (centrada)
+  // Firma del docente centrada
   elements.push(new Paragraph({
     alignment: AlignmentType.CENTER,
     spacing: { before: 480, after: 0, line: 240, lineRule: 'auto' },
-    children: [new TextRun({ text: '_'.repeat(36), font: 'Arial', size: PT(10) })],
+    children: [new TextRun({ text: '_'.repeat(36) })],
   }))
   elements.push(new Paragraph({
     alignment: AlignmentType.CENTER,
     spacing: { before: 40, after: 80, line: 240, lineRule: 'auto' },
-    children: [new TextRun({ text: job.docente.nombre, bold: true, font: 'Arial', size: PT(10) })],
+    children: [new TextRun({ text: job.docente.nombre, bold: true })],
   }))
 
-  // ── Tabla de destinatarios ──
-  const colWidths = [900, 1400, 2600, 2200, 1000, 929]  // total = 9029 DXA = CONT_W
-  const hdrBord = thinBorder
-  const dataBord = { ...thinBorder, top: { style: BorderStyle.SINGLE, size: 5, color: 'cccccc' } }
-
-  function destHeaderCell(text, w) {
-    return textCell(text, {
-      borders: hdrBord,
-      shading: { type: ShadingType.CLEAR, fill: RED_HEADER },
-      bold: true, color: 'ffffff', size: PT(9),
-      align: AlignmentType.CENTER,
-      width: { size: w, type: WidthType.DXA },
-      margins: { top: 0, bottom: 0, left: 40, right: 40 },
-    })
-  }
-  function destDataCell(text, w, bold = false) {
-    return textCell(text, {
-      borders: dataBord,
-      shading: { type: ShadingType.CLEAR, fill: 'FFFFFF' },
-      bold, size: PT(9),
-      width: { size: w, type: WidthType.DXA },
-      margins: { top: 0, bottom: 0, left: 40, right: 40 },
-    })
-  }
-  function destLabelCell(text, w) {
-    return textCell(text, {
-      borders: dataBord,
-      shading: { type: ShadingType.CLEAR, fill: OLIVE_ROW },
-      bold: true, size: PT(9),
-      width: { size: w, type: WidthType.DXA },
-      margins: { top: 0, bottom: 0, left: 40, right: 40 },
-    })
-  }
-
-  const destTable = new Table({
-    width: { size: CONT_W, type: WidthType.DXA },
-    columnWidths: colWidths,
-    rows: [
-      // Encabezado
-      new TableRow({
-        tableHeader: true,
-        children: [
-          destHeaderCell('Lista\nDestinatarios:', colWidths[0]),
-          destHeaderCell('Acuse de\nrecibido de', colWidths[1]),
-          destHeaderCell('Nombre:', colWidths[2]),
-          destHeaderCell('Cargo:', colWidths[3]),
-          destHeaderCell('Firma', colWidths[4]),
-          destHeaderCell('Fecha', colWidths[5]),
-        ],
-      }),
-      // Para: coordinador
-      new TableRow({
-        children: [
-          destLabelCell('Para:', colWidths[0]),
-          destDataCell('', colWidths[1]),
-          destDataCell(job.coordinador.nombre, colWidths[2]),
-          destDataCell(job.coordinador.cargo_corto, colWidths[3]),
-          destDataCell('', colWidths[4]),
-          destDataCell('', colWidths[5]),
-        ],
-      }),
-      // C.c.p.: secretaria
-      new TableRow({
-        children: [
-          destLabelCell('C.c.p.', colWidths[0]),
-          destDataCell('', colWidths[1]),
-          destDataCell(job.secretaria.nombre + '.', colWidths[2]),
-          destDataCell(job.secretaria.cargo_corto, colWidths[3]),
-          destDataCell('', colWidths[4]),
-          destDataCell('', colWidths[5]),
-        ],
-      }),
-      // C.c.p.: Recursos Humanos
-      new TableRow({
-        children: [
-          destLabelCell('C.c.p.', colWidths[0]),
-          destDataCell('', colWidths[1]),
-          destDataCell('Recursos Humanos', colWidths[2]),
-          destDataCell('Recursos Humanos', colWidths[3]),
-          destDataCell('', colWidths[4]),
-          destDataCell('', colWidths[5]),
-        ],
-      }),
-    ],
-  })
-
-  elements.push(destTable)
+  // Tabla de destinatarios (5 columnas, cabecera gris)
+  elements.push(buildDestinatariosTable(job))
   elements.push(para('NOTA: ANEXAR TANTAS FILAS COMO SEAN NECESARIAS.', {
-    spaceBefore: 40, spaceAfter: 160, size: PT(9),
-  }))
-
-  // ── Firmas finales (3 columnas) ──
-  const sigColW = Math.floor(CONT_W / 3)
-  function sigCell(nombre, cargo) {
-    return new TableCell({
-      borders: noBorder,
-      width: { size: sigColW, type: WidthType.DXA },
-      children: [
-        new Paragraph({ spacing: { before: 480, after: 0 }, children: [] }),
-        new Paragraph({
-          alignment: AlignmentType.CENTER,
-          spacing: { before: 0, after: 0 },
-          children: [new TextRun({ text: '_'.repeat(32), font: 'Arial', size: PT(10) })],
-        }),
-        new Paragraph({
-          alignment: AlignmentType.CENTER,
-          spacing: { before: 40, after: 0, line: 240, lineRule: 'auto' },
-          children: [new TextRun({ text: nombre, bold: true, font: 'Arial', size: PT(10) })],
-        }),
-        new Paragraph({
-          alignment: AlignmentType.CENTER,
-          spacing: { before: 0, after: 0, line: 240, lineRule: 'auto' },
-          children: [new TextRun({ text: cargo, font: 'Arial', size: PT(9) })],
-        }),
-      ],
-    })
-  }
-
-  elements.push(new Table({
-    width: { size: CONT_W, type: WidthType.DXA },
-    columnWidths: [sigColW, sigColW, sigColW],
-    rows: [
-      new TableRow({
-        children: [
-          sigCell(job.docente.nombre,        job.cargoDocente),
-          sigCell(job.coordinador.nombre,    job.coordinador.cargo_largo),
-          sigCell(job.secretaria.nombre,     job.secretaria.cargo_largo),
-        ],
-      }),
-    ],
+    spaceBefore: 40, spaceAfter: 80, size: PT(8),
   }))
 
   return elements
@@ -601,6 +596,20 @@ function buildMemoSection(job) {
 const HORA_RE = /^\d{1,2}[:.]\d{0,2}\s*[-–]/
 const DIA_RE  = /lunes|martes|mi[eé]rcoles|jueves|viernes|s[aá]bado/i
 
+// Extrae el color de fondo de una celda Excel como hex RGB (sin alfa), o null
+function cellFill(excelCell) {
+  const f = excelCell.fill
+  if (!f) return null
+  if (f.type === 'pattern' && f.fgColor) {
+    const argb = f.fgColor.argb || f.fgColor.theme
+    if (argb && typeof argb === 'string' && argb.length >= 6) {
+      // ARGB → RGB (quitar los 2 primeros caracteres de alfa)
+      return argb.length === 8 ? argb.slice(2).toUpperCase() : argb.toUpperCase()
+    }
+  }
+  return null
+}
+
 async function readHorarioTable(xlsxFile, sheetName) {
   if (!xlsxFile || !fs.existsSync(xlsxFile)) return null
   const wb = new ExcelJS.Workbook()
@@ -631,7 +640,7 @@ async function readHorarioTable(xlsxFile, sheetName) {
 
   if (firstHoraRowNum === null) return null
 
-  // Paso 2: leer filas (encabezado + horas)
+  // Paso 2: leer filas (encabezado + horas) — cada celda: { text, fill }
   const rawRows = []
   const startRow = headerRowNum ?? firstHoraRowNum
 
@@ -643,30 +652,31 @@ async function readHorarioTable(xlsxFile, sheetName) {
 
     const rowData = []
     for (let c = 1; c <= totalCols; c++) {
-      rowData.push(cellText(row.getCell(c)).trim())
+      const ec = row.getCell(c)
+      rowData.push({ text: cellText(ec).trim(), fill: cellFill(ec) })
     }
     rawRows.push(rowData)
   }
 
   if (!rawRows.length) return null
 
-  // Paso 3: filtrar columnas vacías (artefacto de celdas fusionadas)
+  // Paso 3: filtrar columnas vacías
   const usedCols = new Set([0])
   for (const row of rawRows) {
-    row.forEach((val, idx) => { if (val) usedCols.add(idx) })
+    row.forEach((cell, idx) => { if (cell.text) usedCols.add(idx) })
   }
   const sortedCols = [...usedCols].sort((a, b) => a - b)
 
-  return rawRows.map(row => sortedCols.map(c => row[c] ?? ''))
+  return rawRows.map(row => sortedCols.map(c => row[c] ?? { text: '', fill: null }))
 }
 
 function buildHorarioSection(job, horarioRows) {
   const children = []
 
   children.push(para('HORARIO', {
-    bold: true, size: PT(14), align: AlignmentType.CENTER, spaceBefore: 0, spaceAfter: 120,
+    bold: true, size: PT(14), font: 'Arial', align: AlignmentType.CENTER, spaceBefore: 0, spaceAfter: 120,
   }))
-  children.push(para(`Docente: ${job.docente.nombre}`, { bold: true, spaceAfter: 120 }))
+  children.push(para(`Docente: ${job.docente.nombre}`, { bold: true, size: PT(14), font: 'Arial', align: AlignmentType.CENTER, spaceAfter: 120 }))
 
   // Ancho útil en landscape carta: 11" - 2*0.75" = 9.5" = 13680 DXA
   const LAND_CONT_W = convertInchesToTwip(9.5)
@@ -679,19 +689,20 @@ function buildHorarioSection(job, horarioRows) {
       const isHeader = idx === 0
       return new TableRow({
         tableHeader: isHeader,
-        children: rowData.map((txt, ci) =>
-          textCell(txt, {
+        children: rowData.map(({ text, fill }) => {
+          // Color: encabezado → oliva fijo; datos → color del Excel si existe, sino blanco
+          const bgColor = isHeader ? OLIVE_ROW : (fill ?? 'FFFFFF')
+          return textCell(text, {
             borders: thinBorder,
-            shading: isHeader
-              ? { type: ShadingType.CLEAR, fill: OLIVE_ROW }
-              : undefined,
-            bold:  isHeader,
-            align: AlignmentType.CENTER,
-            size:  PT(9),
-            width: { size: colW, type: WidthType.DXA },
+            shading: { type: ShadingType.CLEAR, fill: bgColor },
+            bold:    isHeader,
+            align:   AlignmentType.CENTER,
+            size:    PT(9),
+            font:    'Arial',
+            width:   { size: colW, type: WidthType.DXA },
             margins: { top: 0, bottom: 0, left: 40, right: 40 },
           })
-        ),
+        }),
       })
     })
 
@@ -708,26 +719,27 @@ function buildHorarioSection(job, horarioRows) {
 
   children.push(para('', { spaceBefore: 120 }))
 
-  // Firmas en landscape (2 columnas)
-  const sigColW = Math.floor(LAND_CONT_W / 2) - 200
-  function sigCell2(nombre, cargo) {
+  // Tabla de firmas (3 columnas: coordinador | docente | secretaria)
+  const sigColW = Math.floor(LAND_CONT_W / 3)
+
+  function sigCell(nombre, cargo) {
     return new TableCell({
-      borders: noBorder,
+      borders: thinBorder,
       width: { size: sigColW, type: WidthType.DXA },
       children: [
-        new Paragraph({ spacing: { before: 480, after: 0 }, children: [] }),
         new Paragraph({
-          alignment: AlignmentType.CENTER,
-          children: [new TextRun({ text: '_'.repeat(32), font: 'Arial', size: PT(10) })],
+          spacing: { before: 600, after: 0, line: 240, lineRule: 'auto' },
+          children: [],
         }),
         new Paragraph({
           alignment: AlignmentType.CENTER,
-          spacing: { before: 40, after: 0 },
-          children: [new TextRun({ text: nombre, bold: true, font: 'Arial', size: PT(10) })],
+          spacing: { before: 0, after: 0, line: 240, lineRule: 'auto' },
+          children: [new TextRun({ text: nombre, bold: true })],
         }),
         new Paragraph({
           alignment: AlignmentType.CENTER,
-          children: [new TextRun({ text: cargo, font: 'Arial', size: PT(9) })],
+          spacing: { before: 0, after: 0, line: 240, lineRule: 'auto' },
+          children: [new TextRun({ text: cargo })],
         }),
       ],
     })
@@ -735,11 +747,12 @@ function buildHorarioSection(job, horarioRows) {
 
   children.push(new Table({
     width: { size: LAND_CONT_W, type: WidthType.DXA },
-    columnWidths: [sigColW, sigColW],
+    columnWidths: [sigColW, sigColW, sigColW],
     rows: [new TableRow({
       children: [
-        sigCell2(job.coordinador.nombre, job.coordinador.cargo_corto),
-        sigCell2(job.docente.nombre,     job.cargoDocente),
+        sigCell(job.docente.nombre,     job.cargoDocente),
+        sigCell(job.coordinador.nombre, job.coordinador.cargo_largo),
+        sigCell(job.secretaria.nombre,  job.secretaria.cargo_largo),
       ],
     })],
   }))
@@ -774,13 +787,13 @@ export async function generateDocx(job) {
   const horarioSection = buildHorarioSection(job, horarioRows)
 
   const doc = new Document({
-    // Default del documento: Arial 11pt (igual que la plantilla original)
+    // Default del documento: Arial 9pt (solicitado por usuario)
     styles: {
       default: {
         document: {
           run: {
             font: 'Arial',
-            size: PT(11),  // 22 half-points = 11pt
+            size: PT(9),  // 18 half-points = 9pt
           },
         },
       },
@@ -795,7 +808,7 @@ export async function generateDocx(job) {
             text:      '•',
             alignment: AlignmentType.LEFT,
             style: {
-              run: { font: 'Calibri', size: PT(13) },
+              run: { font: 'Calibri', size: PT(9) },
               paragraph: {
                 indent: { left: 720, hanging: 360 },  // igual que plantilla original
               },

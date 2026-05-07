@@ -172,7 +172,7 @@ export default function Sidebar({
       <aside className={`sidebar ${mobileOpen ? 'mobile-open' : ''}`}>
         {/* Logo */}
         <div className="sidebar-logo">
-          Coordinación Administración
+          Adminet
           <span>UPMH — Sistema académico</span>
         </div>
 

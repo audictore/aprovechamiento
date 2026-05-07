@@ -108,7 +108,7 @@ export default function App() {
       {/* Header móvil */}
       <div className="mobile-header">
         <button className="hamburger" onClick={() => setMenuAbierto(true)}>☰</button>
-        <div style={{ fontSize:14, fontWeight:700, color:'#1D9E75' }}>Coordinación Administración</div>
+        <div style={{ fontSize:14, fontWeight:700, color:'#1D9E75' }}>Adminet</div>
         <div style={{ display:'flex', gap:6 }}>
           <button
             className="btn"
