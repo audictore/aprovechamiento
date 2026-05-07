@@ -29,7 +29,7 @@ const OLIVE_ROW  = 'b3af79'   // oliva/beige para filas de datos
 
 // ─── Helpers generales ───────────────────────────────────────────────────────
 
-const PT = n => n * 20  // puntos → half-points (unidades docx)
+const PT = n => n * 2   // puntos → half-points (1pt = 2 half-points en OOXML)
 
 const noBorder = {
   top:    { style: BorderStyle.NONE, size: 0, color: 'FFFFFF' },
@@ -52,7 +52,7 @@ const grayBorder = {
   right:  { style: BorderStyle.SINGLE, size: 5, color: '000000' },
 }
 
-// Párrafo simple (10pt Arial)
+// Párrafo simple — sin tamaño explícito hereda el default del documento (Arial 11pt)
 function para(text, opts = {}) {
   return new Paragraph({
     alignment: opts.align ?? AlignmentType.LEFT,
@@ -66,25 +66,24 @@ function para(text, opts = {}) {
       new TextRun({
         text:  String(text ?? ''),
         bold:  opts.bold  ?? false,
-        size:  opts.size  ?? PT(10),
-        font:  opts.font  ?? 'Arial',
+        size:  opts.size,          // undefined → hereda el default del documento
+        font:  opts.font,          // undefined → hereda Arial del documento
         color: opts.color,
       }),
     ],
   })
 }
 
-// Párrafo justificado para el cuerpo del memo
+// Párrafo justificado para el cuerpo del memo (hereda Arial 11pt del documento)
 function bodyPara(text, opts = {}) {
   return new Paragraph({
     alignment: AlignmentType.BOTH,
     spacing: { before: 0, after: 120, line: 240, lineRule: 'auto' },
     children: [
       new TextRun({
-        text:  String(text ?? ''),
-        bold:  opts.bold ?? false,
-        size:  PT(10),
-        font:  'Arial',
+        text: String(text ?? ''),
+        bold: opts.bold ?? false,
+        // Sin font/size → hereda Arial 11pt del default del documento
       }),
     ],
   })
@@ -104,7 +103,7 @@ function cell(children, opts = {}) {
   })
 }
 
-// Celda con texto simple
+// Celda con texto simple — sin size/font explícito hereda el default del documento
 function textCell(text, opts = {}) {
   return cell([
     new Paragraph({
@@ -113,8 +112,8 @@ function textCell(text, opts = {}) {
       children: [new TextRun({
         text:  String(text ?? ''),
         bold:  opts.bold   ?? false,
-        size:  opts.size   ?? PT(10),
-        font:  opts.font   ?? 'Arial',
+        size:  opts.size,          // undefined → hereda default
+        font:  opts.font,          // undefined → hereda Arial
         color: opts.color,
       })],
     }),
@@ -242,29 +241,30 @@ const ACT_TOTAL = ACT_W1 + ACT_W2 + ACT_W3  // 8955
 function buildActividadesTable(job) {
   const REF_OBS = 'obs-bullets'
 
-  // Párrafo de bullet para observaciones
+  // Párrafo de bullet — Calibri 13pt igual que la plantilla original
   function obsBulletPara(text) {
     return new Paragraph({
       numbering: { reference: REF_OBS, level: 0 },
       spacing: { before: 0, after: 0, line: 240, lineRule: 'auto' },
-      children: [new TextRun({ text: String(text), size: PT(10), font: 'Arial' })],
+      children: [new TextRun({ text: String(text), font: 'Calibri', size: PT(13) })],
     })
   }
 
-  // Celda de encabezado rojo
-  function headerCell(text, width) {
+  // Celda de encabezado rojo (hereda tamaño 11pt del default)
+  function headerCell(text, width, font) {
     return textCell(text, {
       borders: thinBorder,
       shading: { type: ShadingType.CLEAR, fill: RED_HEADER },
       align: AlignmentType.CENTER,
       bold: true,
       color: 'ffffff',
+      font: font,   // undefined → hereda Arial; 'Calibri' para Observaciones
       width: { size: width, type: WidthType.DXA },
       margins: { top: 0, bottom: 0, left: 40, right: 40 },
     })
   }
 
-  // Celda de datos con fondo oliva (col 1 y 2)
+  // Celda de datos con fondo oliva (hereda tamaño 11pt del default)
   function oliveCell(text, width, center = false) {
     return textCell(text, {
       borders: thinBorder,
@@ -275,13 +275,13 @@ function buildActividadesTable(job) {
     })
   }
 
-  // Fila de encabezado
+  // Fila de encabezado ("Observaciones" usa Calibri igual que la plantilla)
   const headerRow = new TableRow({
     tableHeader: true,
     children: [
       headerCell('Actividades académicas', ACT_W1),
       headerCell('Horas/Semana',           ACT_W2),
-      headerCell('Observaciones',          ACT_W3),
+      headerCell('Observaciones',          ACT_W3, 'Calibri'),
     ],
   })
 
@@ -362,13 +362,12 @@ function buildActividadesTable(job) {
 function buildFirmasSection(job) {
   const elements = []
 
-  // ATENTAMENTE
+  // ATENTAMENTE (bold, sin punto superíndice — igual que la plantilla original)
   elements.push(new Paragraph({
     alignment: AlignmentType.CENTER,
     spacing: { before: 200, after: 0, line: 240, lineRule: 'auto' },
     children: [
-      new TextRun({ text: '.', verticalAlign: 'superscript', font: 'Arial', size: PT(10) }),
-      new TextRun({ text: 'ATENTAMENTE', bold: true, font: 'Arial', size: PT(10) }),
+      new TextRun({ text: 'ATENTAMENTE', bold: true }),
     ],
   }))
 
@@ -775,6 +774,17 @@ export async function generateDocx(job) {
   const horarioSection = buildHorarioSection(job, horarioRows)
 
   const doc = new Document({
+    // Default del documento: Arial 11pt (igual que la plantilla original)
+    styles: {
+      default: {
+        document: {
+          run: {
+            font: 'Arial',
+            size: PT(11),  // 22 half-points = 11pt
+          },
+        },
+      },
+    },
     numbering: {
       config: [
         {
@@ -785,8 +795,9 @@ export async function generateDocx(job) {
             text:      '•',
             alignment: AlignmentType.LEFT,
             style: {
+              run: { font: 'Calibri', size: PT(13) },
               paragraph: {
-                indent: { left: 360, hanging: 180 },
+                indent: { left: 720, hanging: 360 },  // igual que plantilla original
               },
             },
           }],
