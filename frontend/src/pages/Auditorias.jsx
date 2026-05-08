@@ -388,18 +388,20 @@ export default function Auditorias() {
   }
 
   async function sincronizar() {
-    if (!cuatriId) return
-    if (!rutaMaterias) { setEditandoRuta(true); return }
+    if (!cuatriId)      return setErrorSync('Selecciona un cuatrimestre en el selector de arriba.')
+    if (!rutaMaterias)  return setEditandoRuta(true)
     setSincronizando(true)
     setErrorSync('')
+    console.log('[sincronizar] cuatriId:', cuatriId, 'ruta:', rutaMaterias)
     try {
       const { data } = await sincronizarAuditorias({ cuatrimestreId: cuatriId })
+      console.log('[sincronizar] respuesta:', data)
       setResultadoSync(data)
       getAuditorias(cuatriId).then(r => setRows(r.data)).catch(() => {})
     } catch (e) {
       const msg = e.response?.data?.error ?? e.message ?? 'Error desconocido'
       setErrorSync(msg)
-      console.error('[sincronizar]', e)
+      console.error('[sincronizar] error:', e)
     } finally {
       setSincronizando(false)
     }
@@ -444,9 +446,12 @@ export default function Auditorias() {
         <select
           value={cuatriId}
           onChange={e => setCuatriId(Number(e.target.value))}
-          style={{ fontSize: 13 }}
+          style={{ fontSize: 13, minWidth: 200 }}
         >
-          {cuatrimestres.map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}
+          {!cuatrimestres.length
+            ? <option value="">— Sin cuatrimestres —</option>
+            : cuatrimestres.map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)
+          }
         </select>
 
         <button className="btn btn-primary" style={{ fontSize: 12 }} onClick={() => setModalAgregar(true)}>
@@ -466,7 +471,7 @@ export default function Auditorias() {
           className="btn"
           style={{ fontSize: 12, background: '#2563eb', color: '#fff', border: 'none' }}
           onClick={sincronizar}
-          disabled={!cuatriId || sincronizando}
+          disabled={sincronizando}
           title={rutaMaterias || 'Configura la ruta primero'}
         >
           {sincronizando ? '🔍 Escaneando…' : '📂 Sincronizar'}
