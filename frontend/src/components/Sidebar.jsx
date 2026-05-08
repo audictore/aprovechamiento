@@ -315,7 +315,7 @@ export default function Sidebar({
                   onClick={onVerMemos}
                   style={{ fontWeight: vistaMemos ? 700 : 600, color: vistaMemos ? '#1D9E75' : '#555' }}
                 >
-                  <span>🗂 Generador de Memos</span>
+                  <span>🗂 Generador de Memos (Horarios)</span>
                 </button>
               </div>
             )}
