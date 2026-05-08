@@ -68,8 +68,9 @@ export default function Sidebar({
   const [confirm,      setConfirm]      = useState(null)
 
   // Secciones colapsables principales
-  const [secAprov, setSecAprov] = useState(true)
-  const [secMemos, setSecMemos] = useState(true)
+  const [secAprov,     setSecAprov]     = useState(true)
+  const [secMemos,     setSecMemos]     = useState(true)
+  const [secAuditoria, setSecAuditoria] = useState(true)
 
   const { addToast } = useToast()
 
@@ -316,12 +317,23 @@ export default function Sidebar({
                 >
                   <span>🗂 Generador de Memos</span>
                 </button>
+              </div>
+            )}
+          </>
+        )}
+
+        {/* ── SECCIÓN AUDITORÍA (solo admin) ── */}
+        {esAdmin && (
+          <>
+            <SeccionHeader label="📋 Auditoría" open={secAuditoria} onToggle={() => setSecAuditoria(v => !v)} />
+            {secAuditoria && (
+              <div className="sidebar-section">
                 <button
                   className={`cuatri-btn ${vistaAuditorias ? 'open' : ''}`}
                   onClick={onVerAuditorias}
                   style={{ fontWeight: vistaAuditorias ? 700 : 600, color: vistaAuditorias ? '#1D9E75' : '#555' }}
                 >
-                  <span>📋 Auditoría de Planeaciones</span>
+                  <span>📋 Planeaciones y Evidencias</span>
                 </button>
               </div>
             )}
