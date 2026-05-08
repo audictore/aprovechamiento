@@ -6,6 +6,7 @@ import Docentes     from './pages/Docentes.jsx'
 import Estadisticas from './pages/Estadisticas.jsx'
 import Login        from './pages/Login.jsx'
 import MemosPage    from './pages/Memos.jsx'
+import Auditorias   from './pages/Auditorias.jsx'
 import { getCuatrimestres, verificar } from './api.js'
 
 export default function App() {
@@ -60,7 +61,8 @@ export default function App() {
     setVista('estadisticas')
   }
 
-  function handleVerMemos() { setVista('memos'); setMenuAbierto(false) }
+  function handleVerMemos()       { setVista('memos');       setMenuAbierto(false) }
+  function handleVerAuditorias()  { setVista('auditorias');  setMenuAbierto(false) }
 
   function handleSelect(cuatri, parcial, programa) {
     setSeleccion({ cuatri, parcial, programa })
@@ -145,11 +147,14 @@ export default function App() {
         onToggleDark={() => setDarkMode(d => !d)}
         vistaMemos={vista === 'memos'}
         onVerMemos={handleVerMemos}
+        vistaAuditorias={vista === 'auditorias'}
+        onVerAuditorias={handleVerAuditorias}
       />
 
       <main className="main-area">
         {vista === 'docentes' && esAdmin && <Docentes esAdmin={esAdmin} />}
-        {vista === 'memos'    && autenticado && <MemosPage esAdmin={esAdmin} />}
+        {vista === 'memos'       && autenticado && <MemosPage esAdmin={esAdmin} />}
+        {vista === 'auditorias'  && autenticado && <Auditorias />}
         {vista === 'estadisticas' && <Estadisticas cuatrimestres={cuatrimestres} />}
         {vista === 'parcial' && !seleccion && <Estadisticas cuatrimestres={cuatrimestres} />}
         {vista === 'parcial' && seleccion && (

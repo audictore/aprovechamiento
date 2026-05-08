@@ -8,10 +8,11 @@ datasource db {
 }
 
 model Cuatrimestre {
-  id        Int                 @id @default(autoincrement())
-  nombre    String              @unique
-  orden     Int
-  programas ProgramaEducativo[]
+  id         Int                 @id @default(autoincrement())
+  nombre     String              @unique
+  orden      Int
+  programas  ProgramaEducativo[]
+  auditorias Auditoria[]
 }
 
 model ProgramaEducativo {
@@ -48,10 +49,53 @@ model Grupo {
 }
 
 model Docente {
-  id       Int       @id @default(autoincrement())
-  nombre   String    @unique
-  email    String    @default("")
-  materias Materia[]
+  id         Int        @id @default(autoincrement())
+  nombre     String     @unique
+  email      String     @default("")
+  materias   Materia[]
+  auditorias Auditoria[]
+}
+
+model Auditoria {
+  id             Int          @id @default(autoincrement())
+  cuatrimestreId Int
+  cuatrimestre   Cuatrimestre @relation(fields: [cuatrimestreId], references: [id])
+  docenteId      Int
+  docente        Docente      @relation(fields: [docenteId], references: [id])
+  materia        String
+  grupo          String       @default("")
+
+  // Planeación
+  planProfesor      Boolean  @default(false)
+  planCoordinador   Boolean  @default(false)
+  planFechaRevision String   @default("")
+  planFechaElab     String   @default("")
+
+  // Presentación de inicio
+  presentacion      Boolean  @default(false)
+
+  // Primer parcial
+  p1Conocimiento    Boolean  @default(false)
+  p1Producto        Boolean  @default(false)
+  p1Desempeno       Boolean  @default(false)
+  p1Asistencia      Boolean  @default(false)
+  p1Calificaciones  Boolean  @default(false)
+
+  // Segundo parcial
+  p2Conocimiento    Boolean  @default(false)
+  p2Producto        Boolean  @default(false)
+  p2Desempeno       Boolean  @default(false)
+  p2Asistencia      Boolean  @default(false)
+  p2Calificaciones  Boolean  @default(false)
+
+  // Tercer parcial
+  p3Conocimiento    Boolean  @default(false)
+  p3Producto        Boolean  @default(false)
+  p3Desempeno       Boolean  @default(false)
+  p3Asistencia      Boolean  @default(false)
+  p3Calificaciones  Boolean  @default(false)
+
+  @@unique([cuatrimestreId, docenteId, materia])
 }
 
 model Materia {

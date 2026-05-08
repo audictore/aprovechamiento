@@ -8,6 +8,7 @@ import cuatrimestresRouter from './routes/cuatrimestres.js'
 import parcialesRouter     from './routes/parciales.js'
 import docentesRouter      from './routes/docentes.js'
 import memosRouter         from './routes/memos.js'
+import auditoriasRouter    from './routes/auditorias.js'
 import { requireAuth } from './middleware/auth.js'
 
 const app     = express()
@@ -27,7 +28,8 @@ app.use('/memos', (req, _res, next) => {
     req.headers.authorization = `Bearer ${req.query.token}`
   next()
 })
-app.use('/memos',     requireAuth, memosRouter)
+app.use('/memos',       requireAuth, memosRouter)
+app.use('/auditorias',  requireAuth, auditoriasRouter)
 
 // Servir frontend en producción
 const frontendDist = path.join(__dirname, '../../frontend/dist')

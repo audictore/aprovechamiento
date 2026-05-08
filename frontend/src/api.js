@@ -78,6 +78,13 @@ export const getMemosFiles   = ()     => api.get('/memos/files')
 export const generateMemos   = ()     => api.post('/memos/generate')
 export const deleteHorario   = (name) => api.delete(`/memos/horarios/${encodeURIComponent(name)}`)
 
+// ── Auditorías ───────────────────────────────────────────────────────────────
+export const getAuditorias       = (cuatrimestreId) => api.get('/auditorias', { params: { cuatrimestreId } })
+export const crearAuditoria      = (data)           => api.post('/auditorias', data)
+export const actualizarAuditoria = (id, data)       => api.patch(`/auditorias/${id}`, data)
+export const eliminarAuditoria   = (id)             => api.delete(`/auditorias/${id}`)
+export const notificarAuditorias = (data)           => api.post('/auditorias/notificar', data)
+
 // SSE se construye directamente con EventSource + ?token= en cada componente
 
 export default api

@@ -56,6 +56,7 @@ export default function Sidebar({
   autenticado, vistaDocentes, onVerDocentes, vistaEstadisticas, onVerEstadisticas,
   mobileOpen, darkMode, onToggleDark,
   vistaMemos, onVerMemos,
+  vistaAuditorias, onVerAuditorias,
 }) {
   const [abiertos,     setAbiertos]     = useState({})
   const [programasMap, setProgramasMap] = useState({})
@@ -314,6 +315,13 @@ export default function Sidebar({
                   style={{ fontWeight: vistaMemos ? 700 : 600, color: vistaMemos ? '#1D9E75' : '#555' }}
                 >
                   <span>🗂 Generador de Memos</span>
+                </button>
+                <button
+                  className={`cuatri-btn ${vistaAuditorias ? 'open' : ''}`}
+                  onClick={onVerAuditorias}
+                  style={{ fontWeight: vistaAuditorias ? 700 : 600, color: vistaAuditorias ? '#1D9E75' : '#555' }}
+                >
+                  <span>📋 Auditoría de Planeaciones</span>
                 </button>
               </div>
             )}
