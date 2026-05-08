@@ -3,6 +3,7 @@ import {
   getCuatrimestres, getDocentes,
   getAuditorias, crearAuditoria, actualizarAuditoria, eliminarAuditoria,
   notificarAuditorias, sincronizarAuditorias,
+  getAuditoriasConfig, saveAuditoriasConfig,
 } from '../api.js'
 import { useToast } from '../components/Toast.jsx'
 
@@ -200,131 +201,78 @@ function ModalNotificar({ cuatrimestreId, cuatrimestres, onCerrar }) {
   )
 }
 
-// ─── Modal sincronizar carpetas ───────────────────────────────────────────────
-function ModalSincronizar({ cuatrimestreId, cuatrimestres, onSincronizado, onCerrar }) {
-  const [ruta,      setRuta]      = useState('')
-  const [cargando,  setCargando]  = useState(false)
-  const [resultado, setResultado] = useState(null)
-  const { addToast } = useToast()
+// ─── Etiquetas de campos para resultados ─────────────────────────────────────
+const CAMPO_LABEL = {
+  planProfesor: 'Plan (P)', presentacion: 'Presentación',
+  p1Conocimiento: '1C-Conoc', p1Producto: '1C-Prod', p1Desempeno: '1C-Desemp',
+  p1Asistencia: '1C-Asist', p1Calificaciones: '1C-Calif',
+  p2Conocimiento: '2C-Conoc', p2Producto: '2C-Prod', p2Desempeno: '2C-Desemp',
+  p2Asistencia: '2C-Asist', p2Calificaciones: '2C-Calif',
+  p3Conocimiento: '3C-Conoc', p3Producto: '3C-Prod', p3Desempeno: '3C-Desemp',
+  p3Asistencia: '3C-Asist', p3Calificaciones: '3C-Calif',
+}
 
-  const cuatri = cuatrimestres.find(c => c.id === cuatrimestreId)
-
-  async function sincronizar() {
-    if (!ruta.trim()) return addToast('Ingresa la ruta de la carpeta', 'error')
-    setCargando(true)
-    try {
-      const { data } = await sincronizarAuditorias({ cuatrimestreId, rutaBase: ruta.trim() })
-      setResultado(data)
-      if (data.total > 0) onSincronizado()
-    } catch (e) {
-      addToast(e.response?.data?.error ?? e.message, 'error')
-    } finally {
-      setCargando(false)
-    }
-  }
-
-  const CAMPO_LABEL = {
-    planProfesor: 'Planeación (P)', presentacion: 'Presentación',
-    p1Conocimiento: '1C-Conoc', p1Producto: '1C-Prod', p1Desempeno: '1C-Desemp',
-    p1Asistencia: '1C-Asist', p1Calificaciones: '1C-Calif',
-    p2Conocimiento: '2C-Conoc', p2Producto: '2C-Prod', p2Desempeno: '2C-Desemp',
-    p2Asistencia: '2C-Asist', p2Calificaciones: '2C-Calif',
-    p3Conocimiento: '3C-Conoc', p3Producto: '3C-Prod', p3Desempeno: '3C-Desemp',
-    p3Asistencia: '3C-Asist', p3Calificaciones: '3C-Calif',
-  }
-
+// ─── Modal resultado sincronización ──────────────────────────────────────────
+function ModalResultadoSync({ resultado, onCerrar }) {
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.45)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
-      <div style={{ background: 'var(--surface, #fff)', borderRadius: 12, padding: 24, width: '100%', maxWidth: 580, boxShadow: '0 8px 32px rgba(0,0,0,.22)', maxHeight: '90vh', overflowY: 'auto' }}>
-        <h3 style={{ margin: '0 0 4px', fontSize: 16 }}>📂 Sincronizar carpetas de Drive</h3>
-        <p style={{ margin: '0 0 16px', fontSize: 12, color: '#666' }}>
-          Escanea la carpeta del cuatrimestre <strong>{cuatri?.nombre}</strong> descargada localmente
-          y marca automáticamente lo que ya está entregado.
-        </p>
+      <div style={{ background: 'var(--surface, #fff)', borderRadius: 12, padding: 24, width: '100%', maxWidth: 540, boxShadow: '0 8px 32px rgba(0,0,0,.22)', maxHeight: '90vh', overflowY: 'auto' }}>
+        <h3 style={{ margin: '0 0 12px', fontSize: 16 }}>📂 Resultado de la sincronización</h3>
 
-        {!resultado ? (
-          <>
-            <div className="field">
-              <label style={{ fontSize: 12 }}>Ruta de la carpeta del cuatrimestre</label>
-              <input
-                value={ruta}
-                onChange={e => setRuta(e.target.value)}
-                placeholder="Ej: C:\Users\Alonzo\Desktop\Materias\2do Cuatrimestre"
-                style={{ fontFamily: 'monospace', fontSize: 12 }}
-              />
-              <small style={{ color: '#888', fontSize: 11 }}>
-                La carpeta debe tener la estructura: Materia → Docente → Grupo → Corte → Evidencia
-              </small>
-            </div>
-
-            <div style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 8, padding: 12, marginBottom: 16, fontSize: 11, color: '#166534' }}>
-              <strong>¿Qué detecta automáticamente?</strong>
-              <ul style={{ margin: '6px 0 0', paddingLeft: 18, lineHeight: 1.7 }}>
-                <li>Planeación (P) — archivo con "planeac" en el nombre a nivel docente</li>
-                <li>Presentación — archivo .pptx o con "presentac/encuadre/primera clase"</li>
-                <li>Evidencias por corte — carpetas cuyo nombre contenga el número del corte,<br />
-                  con subcarpetas de evidencias que tengan archivos dentro</li>
-              </ul>
-              <p style={{ margin: '6px 0 0' }}>Solo <strong>marca</strong> lo encontrado; no desmarca lo ya capturado manualmente.</p>
-            </div>
-
-            <div style={{ display: 'flex', gap: 8 }}>
-              <button className="btn btn-primary" onClick={sincronizar} disabled={cargando}>
-                {cargando ? '🔍 Escaneando…' : '🔍 Sincronizar'}
-              </button>
-              <button className="btn" onClick={onCerrar}>Cancelar</button>
-            </div>
-          </>
-        ) : (
-          <>
-            <div style={{ display: 'flex', gap: 16, marginBottom: 16 }}>
-              <div style={{ flex: 1, background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 8, padding: 12, textAlign: 'center' }}>
-                <div style={{ fontSize: 28, fontWeight: 700, color: '#16a34a' }}>{resultado.total}</div>
-                <div style={{ fontSize: 11, color: '#166534' }}>registros actualizados</div>
-              </div>
-              <div style={{ flex: 1, background: resultado.sinCoincidencia.length ? '#fff7ed' : '#f9fafb', border: `1px solid ${resultado.sinCoincidencia.length ? '#fed7aa' : '#e5e7eb'}`, borderRadius: 8, padding: 12, textAlign: 'center' }}>
-                <div style={{ fontSize: 28, fontWeight: 700, color: resultado.sinCoincidencia.length ? '#ea580c' : '#9ca3af' }}>{resultado.sinCoincidencia.length}</div>
-                <div style={{ fontSize: 11, color: resultado.sinCoincidencia.length ? '#9a3412' : '#6b7280' }}>sin coincidencia en BD</div>
-              </div>
-            </div>
-
-            {resultado.actualizados.length > 0 && (
-              <div style={{ marginBottom: 12 }}>
-                <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 6, color: '#166534' }}>✅ Actualizados</div>
-                <div style={{ maxHeight: 200, overflowY: 'auto', border: '1px solid #e5e7eb', borderRadius: 6 }}>
-                  {resultado.actualizados.map((r, i) => (
-                    <div key={i} style={{ padding: '6px 10px', borderBottom: '1px solid #f3f4f6', fontSize: 11 }}>
-                      <strong>{r.materia}</strong> — {r.docente}
-                      {r.grupo ? <span style={{ color: '#888' }}> ({r.grupo})</span> : null}
-                      <br />
-                      <span style={{ color: '#16a34a' }}>
-                        {r.campos.map(k => CAMPO_LABEL[k] ?? k).join(', ')}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {resultado.sinCoincidencia.length > 0 && (
-              <div style={{ marginBottom: 12 }}>
-                <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 6, color: '#ea580c' }}>⚠️ Sin coincidencia en la tabla</div>
-                <div style={{ maxHeight: 140, overflowY: 'auto', border: '1px solid #fed7aa', borderRadius: 6, background: '#fff7ed' }}>
-                  {resultado.sinCoincidencia.map((r, i) => (
-                    <div key={i} style={{ padding: '5px 10px', borderBottom: '1px solid #fed7aa', fontSize: 11, color: '#9a3412' }}>
-                      {r.materia} / {r.docente} / {r.grupo}
-                    </div>
-                  ))}
-                </div>
-                <p style={{ fontSize: 11, color: '#888', marginTop: 6 }}>
-                  Agrega estos registros manualmente con <strong>+ Agregar</strong> y vuelve a sincronizar.
-                </p>
-              </div>
-            )}
-
-            <button className="btn" onClick={onCerrar}>Cerrar</button>
-          </>
+        {resultado.carpetaUsada && (
+          <p style={{ margin: '0 0 14px', fontSize: 11, color: '#888', fontFamily: 'monospace', wordBreak: 'break-all' }}>
+            📁 {resultado.carpetaUsada}
+          </p>
         )}
+
+        <div style={{ display: 'flex', gap: 12, marginBottom: 16 }}>
+          <div style={{ flex: 1, background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 8, padding: 12, textAlign: 'center' }}>
+            <div style={{ fontSize: 28, fontWeight: 700, color: '#16a34a' }}>{resultado.total}</div>
+            <div style={{ fontSize: 11, color: '#166534' }}>registros actualizados</div>
+          </div>
+          <div style={{ flex: 1, background: resultado.sinCoincidencia.length ? '#fff7ed' : '#f9fafb', border: `1px solid ${resultado.sinCoincidencia.length ? '#fed7aa' : '#e5e7eb'}`, borderRadius: 8, padding: 12, textAlign: 'center' }}>
+            <div style={{ fontSize: 28, fontWeight: 700, color: resultado.sinCoincidencia.length ? '#ea580c' : '#9ca3af' }}>{resultado.sinCoincidencia.length}</div>
+            <div style={{ fontSize: 11, color: resultado.sinCoincidencia.length ? '#9a3412' : '#6b7280' }}>sin coincidencia</div>
+          </div>
+        </div>
+
+        {resultado.actualizados.length > 0 && (
+          <div style={{ marginBottom: 12 }}>
+            <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 6, color: '#166534' }}>✅ Actualizados</div>
+            <div style={{ maxHeight: 200, overflowY: 'auto', border: '1px solid #e5e7eb', borderRadius: 6 }}>
+              {resultado.actualizados.map((r, i) => (
+                <div key={i} style={{ padding: '6px 10px', borderBottom: '1px solid #f3f4f6', fontSize: 11 }}>
+                  <strong>{r.materia}</strong> — {r.docente}
+                  {r.grupo ? <span style={{ color: '#888' }}> ({r.grupo})</span> : null}
+                  <br />
+                  <span style={{ color: '#16a34a' }}>{r.campos.map(k => CAMPO_LABEL[k] ?? k).join(', ')}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {resultado.sinCoincidencia.length > 0 && (
+          <div style={{ marginBottom: 12 }}>
+            <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 6, color: '#ea580c' }}>⚠️ Carpetas sin registro en la tabla</div>
+            <div style={{ maxHeight: 140, overflowY: 'auto', border: '1px solid #fed7aa', borderRadius: 6, background: '#fff7ed' }}>
+              {resultado.sinCoincidencia.map((r, i) => (
+                <div key={i} style={{ padding: '5px 10px', borderBottom: '1px solid #fed7aa', fontSize: 11, color: '#9a3412' }}>
+                  {r.materia} / {r.docente} / {r.grupo}
+                </div>
+              ))}
+            </div>
+            <p style={{ fontSize: 11, color: '#888', marginTop: 6 }}>Agrégalos con <strong>+ Agregar</strong> y vuelve a sincronizar.</p>
+          </div>
+        )}
+
+        {resultado.total === 0 && resultado.sinCoincidencia.length === 0 && (
+          <p style={{ fontSize: 13, color: '#6b7280', textAlign: 'center', padding: '12px 0' }}>
+            No se encontraron cambios pendientes. Todo ya está al día.
+          </p>
+        )}
+
+        <button className="btn" onClick={onCerrar}>Cerrar</button>
       </div>
     </div>
   )
@@ -339,7 +287,11 @@ export default function Auditorias() {
   const [loading,         setLoading]         = useState(false)
   const [modalAgregar,     setModalAgregar]     = useState(false)
   const [modalNotificar,   setModalNotificar]   = useState(false)
-  const [modalSincronizar, setModalSincronizar] = useState(false)
+  const [resultadoSync,    setResultadoSync]    = useState(null)   // resultado de la última sync
+  const [sincronizando,    setSincronizando]    = useState(false)
+  const [rutaMaterias,     setRutaMaterias]     = useState('')     // ruta guardada
+  const [editandoRuta,     setEditandoRuta]     = useState(false)  // muestra input para cambiar ruta
+  const [rutaInput,        setRutaInput]        = useState('')
   const [pendingUpdates,  setPendingUpdates]  = useState({}) // { rowId: { campo: valor } }
   const { addToast } = useToast()
 
@@ -349,6 +301,9 @@ export default function Auditorias() {
       if (r.data.length) setCuatriId(r.data[r.data.length - 1].id)
     })
     getDocentes().then(r => setDocentes(r.data))
+    getAuditoriasConfig().then(r => {
+      if (r.data.rutaMaterias) { setRutaMaterias(r.data.rutaMaterias); setRutaInput(r.data.rutaMaterias) }
+    }).catch(() => {})
   }, [])
 
   useEffect(() => {
@@ -377,6 +332,34 @@ export default function Auditorias() {
     actualizarAuditoria(id, { [campo]: valor })
       .catch(() => addToast('Error al guardar', 'error'))
   }, [])
+
+  async function guardarRuta() {
+    const ruta = rutaInput.trim()
+    if (!ruta) return addToast('Ingresa la ruta', 'error')
+    try {
+      await saveAuditoriasConfig({ rutaMaterias: ruta })
+      setRutaMaterias(ruta)
+      setEditandoRuta(false)
+      addToast('Ruta guardada', 'success')
+    } catch { addToast('Error al guardar', 'error') }
+  }
+
+  async function sincronizar() {
+    if (!cuatriId) return
+    setSincronizando(true)
+    try {
+      // Si no hay ruta guardada, pedir una
+      if (!rutaMaterias) { setEditandoRuta(true); return }
+      const { data } = await sincronizarAuditorias({ cuatrimestreId: cuatriId })
+      setResultadoSync(data)
+      // Recargar tabla
+      getAuditorias(cuatriId).then(r => setRows(r.data)).catch(() => {})
+    } catch (e) {
+      addToast(e.response?.data?.error ?? e.message, 'error')
+    } finally {
+      setSincronizando(false)
+    }
+  }
 
   function onAgregarFila(nueva) {
     setRows(prev => [...prev, nueva])
@@ -438,16 +421,59 @@ export default function Auditorias() {
         <button
           className="btn"
           style={{ fontSize: 12, background: '#2563eb', color: '#fff', border: 'none' }}
-          onClick={() => setModalSincronizar(true)}
-          disabled={!cuatriId}
+          onClick={sincronizar}
+          disabled={!cuatriId || sincronizando}
+          title={rutaMaterias || 'Configura la ruta primero'}
         >
-          📂 Sincronizar carpetas
+          {sincronizando ? '🔍 Escaneando…' : '📂 Sincronizar'}
+        </button>
+
+        <button
+          className="btn"
+          style={{ fontSize: 12, padding: '6px 8px' }}
+          onClick={() => { setRutaInput(rutaMaterias); setEditandoRuta(v => !v) }}
+          title={rutaMaterias ? `Carpeta: ${rutaMaterias}` : 'Configurar ruta de carpetas'}
+        >
+          ⚙️
         </button>
 
         <span style={{ marginLeft: 'auto', fontSize: 12, color: '#666' }}>
           {rows.length} registros
         </span>
       </div>
+
+      {/* Panel de configuración de ruta */}
+      {editandoRuta && (
+        <div style={{ background: 'var(--surface, #f9fafb)', border: '1px solid var(--border, #e5e7eb)', borderRadius: 8, padding: 12, marginBottom: 12, display: 'flex', gap: 8, alignItems: 'flex-end', flexWrap: 'wrap' }}>
+          <div style={{ flex: 1, minWidth: 260 }}>
+            <label style={{ fontSize: 11, color: '#666', display: 'block', marginBottom: 4 }}>
+              📁 Ruta de la carpeta <strong>Materias</strong> descargada de Drive
+            </label>
+            <input
+              value={rutaInput}
+              onChange={e => setRutaInput(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && guardarRuta()}
+              placeholder="C:\Users\Alonzo\Desktop\Materias"
+              style={{ fontFamily: 'monospace', fontSize: 12, width: '100%' }}
+              autoFocus
+            />
+          </div>
+          <button className="btn btn-primary" style={{ fontSize: 12 }} onClick={guardarRuta}>Guardar</button>
+          <button className="btn" style={{ fontSize: 12 }} onClick={() => setEditandoRuta(false)}>Cancelar</button>
+        </div>
+      )}
+
+      {!editandoRuta && rutaMaterias && (
+        <div style={{ fontSize: 11, color: '#888', marginBottom: 10, fontFamily: 'monospace' }}>
+          📁 {rutaMaterias}
+        </div>
+      )}
+
+      {!editandoRuta && !rutaMaterias && (
+        <div style={{ fontSize: 12, color: '#ea580c', marginBottom: 10 }}>
+          ⚠️ Configura la ruta de la carpeta con <strong>⚙️</strong> para poder sincronizar.
+        </div>
+      )}
 
       {loading ? (
         <div className="loading"><span className="spinner" /> Cargando…</div>
@@ -530,19 +556,10 @@ export default function Auditorias() {
         />
       )}
 
-      {modalSincronizar && (
-        <ModalSincronizar
-          cuatrimestreId={cuatriId}
-          cuatrimestres={cuatrimestres}
-          onSincronizado={() => {
-            // Recargar datos de la tabla
-            setLoading(true)
-            getAuditorias(cuatriId)
-              .then(r => setRows(r.data))
-              .catch(() => addToast('Error al recargar', 'error'))
-              .finally(() => setLoading(false))
-          }}
-          onCerrar={() => setModalSincronizar(false)}
+      {resultadoSync && (
+        <ModalResultadoSync
+          resultado={resultadoSync}
+          onCerrar={() => setResultadoSync(null)}
         />
       )}
     </div>

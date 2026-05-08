@@ -1,9 +1,23 @@
 import { Router }                        from 'express'
-import { readdirSync }                  from 'fs'
-import { join }                         from 'path'
+import { readdirSync, readFileSync,
+         writeFileSync, mkdirSync }     from 'fs'
+import { join, dirname }               from 'path'
+import { fileURLToPath }               from 'url'
 import prisma                           from '../lib/prisma.js'
 import { enviarCorreo }                 from '../lib/emailService.js'
 import { requireAuth }                  from '../middleware/auth.js'
+
+const __dirname  = dirname(fileURLToPath(import.meta.url))
+const DATA_DIR   = join(__dirname, '../../data')
+const CFG_FILE   = join(DATA_DIR, 'auditorias-config.json')
+mkdirSync(DATA_DIR, { recursive: true })
+
+function readConfig() {
+  try { return JSON.parse(readFileSync(CFG_FILE, 'utf8')) } catch { return {} }
+}
+function saveConfig(data) {
+  writeFileSync(CFG_FILE, JSON.stringify({ ...readConfig(), ...data }, null, 2))
+}
 
 // ── Utilidades para escaneo de carpetas ───────────────────────────────────────
 
@@ -69,6 +83,15 @@ function getFiles(p) {
 const hasFiles = p => getFiles(p).length > 0
 
 const router = Router()
+
+// ── GET /auditorias/config ────────────────────────────────────────────────────
+router.get('/config', requireAuth, (_req, res) => res.json(readConfig()))
+
+// ── POST /auditorias/config ───────────────────────────────────────────────────
+router.post('/config', requireAuth, (req, res) => {
+  saveConfig(req.body)
+  res.json(readConfig())
+})
 
 // ── GET /auditorias?cuatrimestreId=X ─────────────────────────────────────────
 router.get('/', async (req, res, next) => {
@@ -209,12 +232,34 @@ Coordinación Académica — UPMH`
 })
 
 // ── POST /auditorias/sincronizar ──────────────────────────────────────────────
-// Escanea la carpeta del cuatrimestre descargada de Drive y actualiza checkboxes
+// Escanea la carpeta raíz de Materias descargada de Drive y actualiza checkboxes.
+// Acepta `rutaMaterias` opcional para sobreescribir la config guardada.
 router.post('/sincronizar', requireAuth, async (req, res, next) => {
   try {
-    const { cuatrimestreId, rutaBase } = req.body
-    if (!cuatrimestreId || !rutaBase)
-      return res.status(400).json({ error: 'cuatrimestreId y rutaBase son requeridos' })
+    const { cuatrimestreId, rutaMaterias: rutaOverride } = req.body
+    if (!cuatrimestreId)
+      return res.status(400).json({ error: 'cuatrimestreId es requerido' })
+
+    // Ruta raíz: la que viene en el body tiene prioridad; si no, la de la config
+    const cfg = readConfig()
+    const rutaMaterias = rutaOverride ?? cfg.rutaMaterias
+    if (!rutaMaterias)
+      return res.status(400).json({ error: 'No hay ruta de carpeta configurada. Configúrala primero.' })
+
+    // Si viene ruta nueva, guardarla para la próxima vez
+    if (rutaOverride) saveConfig({ rutaMaterias: rutaOverride })
+
+    // Buscar el cuatrimestre en BD para conocer su nombre
+    const cuatrimestre = await prisma.cuatrimestre.findUnique({ where: { id: Number(cuatrimestreId) } })
+    if (!cuatrimestre)
+      return res.status(404).json({ error: 'Cuatrimestre no encontrado' })
+
+    // Encontrar la subcarpeta que corresponde al cuatrimestre dentro de rutaMaterias
+    const subfolders = getDirs(rutaMaterias)
+    const cuatriFolder = subfolders.find(d => similar(d, cuatrimestre.nombre)) ?? null
+
+    // Si no hay subcarpeta, asumir que rutaMaterias YA ES la carpeta del cuatrimestre
+    const rutaBase = cuatriFolder ? join(rutaMaterias, cuatriFolder) : rutaMaterias
 
     // Cargar todos los registros del cuatrimestre
     const auditorias = await prisma.auditoria.findMany({
@@ -327,7 +372,7 @@ router.post('/sincronizar', requireAuth, async (req, res, next) => {
       }
     }
 
-    res.json({ actualizados, sinCoincidencia, total: actualizados.length })
+    res.json({ actualizados, sinCoincidencia, total: actualizados.length, carpetaUsada: rutaBase })
   } catch (e) { next(e) }
 })
 
