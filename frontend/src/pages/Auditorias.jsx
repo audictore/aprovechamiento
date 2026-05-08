@@ -235,9 +235,9 @@ function ModalResultadoSync({ resultado, onCerrar }) {
             <div style={{ fontSize: 24, fontWeight: 700, color: '#2563eb' }}>{resultado.actualizados?.length ?? 0}</div>
             <div style={{ fontSize: 11, color: '#1d4ed8' }}>actualizados</div>
           </div>
-          <div style={{ flex: 1, background: resultado.sinDocente?.length ? '#fff7ed' : '#f9fafb', border: `1px solid ${resultado.sinDocente?.length ? '#fed7aa' : '#e5e7eb'}`, borderRadius: 8, padding: 10, textAlign: 'center' }}>
-            <div style={{ fontSize: 24, fontWeight: 700, color: resultado.sinDocente?.length ? '#ea580c' : '#9ca3af' }}>{resultado.sinDocente?.length ?? 0}</div>
-            <div style={{ fontSize: 11, color: resultado.sinDocente?.length ? '#9a3412' : '#6b7280' }}>sin docente</div>
+          <div style={{ flex: 1, background: '#fdf4ff', border: '1px solid #e9d5ff', borderRadius: 8, padding: 10, textAlign: 'center' }}>
+            <div style={{ fontSize: 24, fontWeight: 700, color: '#7c3aed' }}>{resultado.sinDocente?.length ?? 0}</div>
+            <div style={{ fontSize: 11, color: '#6d28d9' }}>docentes creados</div>
           </div>
         </div>
 
@@ -273,19 +273,19 @@ function ModalResultadoSync({ resultado, onCerrar }) {
           </div>
         )}
 
-        {/* Carpetas sin docente en BD */}
+        {/* Docentes creados automáticamente */}
         {resultado.sinDocente?.length > 0 && (
           <div style={{ marginBottom: 12 }}>
-            <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 6, color: '#ea580c' }}>⚠️ Sin docente registrado en el sistema</div>
-            <div style={{ maxHeight: 120, overflowY: 'auto', border: '1px solid #fed7aa', borderRadius: 6, background: '#fff7ed' }}>
+            <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 6, color: '#7c3aed' }}>🆕 Docentes creados automáticamente</div>
+            <div style={{ maxHeight: 120, overflowY: 'auto', border: '1px solid #e9d5ff', borderRadius: 6, background: '#fdf4ff' }}>
               {resultado.sinDocente.map((r, i) => (
-                <div key={i} style={{ padding: '5px 10px', borderBottom: '1px solid #fed7aa', fontSize: 11, color: '#9a3412' }}>
-                  📁 {r.carpetaDocente} <span style={{ color: '#c2410c' }}>({r.materia})</span>
+                <div key={i} style={{ padding: '5px 10px', borderBottom: '1px solid #e9d5ff', fontSize: 11, color: '#6d28d9' }}>
+                  👤 {r.carpetaDocente}
                 </div>
               ))}
             </div>
             <p style={{ fontSize: 11, color: '#888', marginTop: 6 }}>
-              Da de alta estos docentes en <strong>Docentes</strong> con el mismo nombre de la carpeta.
+              Puedes agregar su correo en la sección <strong>Docentes</strong>.
             </p>
           </div>
         )}

@@ -310,11 +310,12 @@ router.post('/sincronizar', requireAuth, async (req, res, next) => {
       for (const docenteFolder of getDirs(materiaPath)) {
         const docentePath = join(materiaPath, docenteFolder)
 
-        // Buscar docente en BD por nombre de carpeta
-        const docente = buscarDocente(docenteFolder)
+        // Buscar docente en BD por nombre de carpeta; si no existe, crearlo
+        let docente = buscarDocente(docenteFolder)
         if (!docente) {
-          sinDocente.push({ materia: materiaFolder, carpetaDocente: docenteFolder })
-          continue
+          docente = await prisma.docente.create({ data: { nombre: docenteFolder, email: '' } })
+          todosDocentes.push(docente)   // para que coincidencias futuras lo encuentren
+          sinDocente.push({ materia: materiaFolder, carpetaDocente: docenteFolder, creado: true })
         }
 
         // Archivos en nivel docente → planeación y presentación
