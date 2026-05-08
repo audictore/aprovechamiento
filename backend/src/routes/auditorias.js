@@ -1,7 +1,72 @@
-import { Router } from 'express'
-import prisma      from '../lib/prisma.js'
-import { enviarCorreo } from '../lib/emailService.js'
-import { requireAuth }  from '../middleware/auth.js'
+import { Router }                        from 'express'
+import { readdirSync }                  from 'fs'
+import { join }                         from 'path'
+import prisma                           from '../lib/prisma.js'
+import { enviarCorreo }                 from '../lib/emailService.js'
+import { requireAuth }                  from '../middleware/auth.js'
+
+// ── Utilidades para escaneo de carpetas ───────────────────────────────────────
+
+/** Normaliza texto: minúsculas, sin acentos, solo alfanumérico + espacios */
+function norm(s) {
+  return (s ?? '')
+    .toLowerCase()
+    .normalize('NFD').replace(/\p{Mn}/gu, '')   // elimina marcas diacríticas
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+/** ¿La cadena b está "contenida" en a, o viceversa? (mínimo 3 chars) */
+function similar(a, b) {
+  const na = norm(a), nb = norm(b)
+  if (!na || !nb || na.length < 3 || nb.length < 3) return false
+  return na === nb || na.includes(nb) || nb.includes(na)
+}
+
+/** Detecta a qué corte (1, 2 o 3) pertenece una carpeta por su nombre */
+function detectCorte(name) {
+  const n = norm(name)
+  if (!/corte|parcial/.test(n)) return null
+  if (/\b(primer|primero|1er|1ro|uno|1)\b/.test(n)) return 1
+  if (/\b(segund|2do|2o|dos|2)\b/.test(n))          return 2
+  if (/\b(tercer|tercero|3er|3ro|tres|3)\b/.test(n)) return 3
+  return null
+}
+
+/** Detecta qué evidencia representa una carpeta */
+function detectEvidencia(name) {
+  const n = norm(name)
+  if (/conoc/.test(n))              return 'Conocimiento'
+  if (/prod/.test(n))               return 'Producto'
+  if (/desemp|desem/.test(n))       return 'Desempeno'
+  if (/asist/.test(n))              return 'Asistencia'
+  if (/calif/.test(n))              return 'Calificaciones'
+  return null
+}
+
+/** ¿Es un archivo de planeación? */
+const isPlaneacion   = f => /planeac/i.test(f)
+
+/** ¿Es un archivo de presentación? */
+const isPresentacion = f => /presentac|encuadre|primera\s*clase/i.test(norm(f)) || /\.pptx$/i.test(f)
+
+/** Lista subdirectorios de una ruta */
+function getDirs(p) {
+  try {
+    return readdirSync(p, { withFileTypes: true }).filter(e => e.isDirectory()).map(e => e.name)
+  } catch { return [] }
+}
+
+/** Lista archivos de una ruta */
+function getFiles(p) {
+  try {
+    return readdirSync(p, { withFileTypes: true }).filter(e => e.isFile()).map(e => e.name)
+  } catch { return [] }
+}
+
+/** ¿Tiene al menos un archivo la carpeta? */
+const hasFiles = p => getFiles(p).length > 0
 
 const router = Router()
 
@@ -140,6 +205,129 @@ Coordinación Académica — UPMH`
     }
 
     res.json({ resultados })
+  } catch (e) { next(e) }
+})
+
+// ── POST /auditorias/sincronizar ──────────────────────────────────────────────
+// Escanea la carpeta del cuatrimestre descargada de Drive y actualiza checkboxes
+router.post('/sincronizar', requireAuth, async (req, res, next) => {
+  try {
+    const { cuatrimestreId, rutaBase } = req.body
+    if (!cuatrimestreId || !rutaBase)
+      return res.status(400).json({ error: 'cuatrimestreId y rutaBase son requeridos' })
+
+    // Cargar todos los registros del cuatrimestre
+    const auditorias = await prisma.auditoria.findMany({
+      where: { cuatrimestreId: Number(cuatrimestreId) },
+      include: { docente: true },
+    })
+
+    if (!auditorias.length)
+      return res.status(400).json({ error: 'No hay registros de auditoría para este cuatrimestre' })
+
+    const actualizados = []
+    const sinCoincidencia = []
+
+    // Nivel 1: carpetas de materia
+    for (const materiaFolder of getDirs(rutaBase)) {
+      const materiaPath = join(rutaBase, materiaFolder)
+
+      // Nivel 2: carpetas de docente
+      for (const docenteFolder of getDirs(materiaPath)) {
+        const docentePath = join(materiaPath, docenteFolder)
+
+        // Archivos en nivel docente → planeación y presentación
+        const docFiles      = getFiles(docentePath)
+        const tieneplan     = docFiles.some(isPlaneacion)
+        const tienePresent  = docFiles.some(isPresentacion)
+
+        // Nivel 3: carpetas de grupo (ignorar si parecen carpetas de corte)
+        const grupoFolders = getDirs(docentePath).filter(d => detectCorte(d) === null)
+
+        for (const grupoFolder of grupoFolders) {
+          const grupoPath = join(docentePath, grupoFolder)
+
+          // Construir objeto de actualización — solo marcar true, nunca desmarcar
+          const update = {}
+          if (tieneplan)    update.planProfesor  = true
+          if (tienePresent) update.presentacion   = true
+
+          // Nivel 4: carpetas de corte
+          for (const corteFolder of getDirs(grupoPath)) {
+            const corteNum = detectCorte(corteFolder)
+            if (!corteNum) continue
+
+            const cortePath = join(grupoPath, corteFolder)
+
+            // Nivel 5: carpetas de evidencia
+            for (const evidFolder of getDirs(cortePath)) {
+              const evid = detectEvidencia(evidFolder)
+              if (!evid) continue
+
+              const evidPath = join(cortePath, evidFolder)
+              if (hasFiles(evidPath)) {
+                update[`p${corteNum}${evid}`] = true
+              }
+            }
+          }
+
+          // Buscar registro coincidente en BD
+          const match = auditorias.find(a =>
+            similar(a.materia,        materiaFolder) &&
+            similar(a.docente.nombre, docenteFolder) &&
+            similar(a.grupo,          grupoFolder)
+          )
+
+          if (!match) {
+            sinCoincidencia.push({ materia: materiaFolder, docente: docenteFolder, grupo: grupoFolder })
+            continue
+          }
+
+          // Solo actualizar campos que cambian de false → true
+          const campos = Object.entries(update)
+            .filter(([k, v]) => v === true && !match[k])
+            .map(([k]) => k)
+
+          if (campos.length) {
+            const data = Object.fromEntries(campos.map(k => [k, true]))
+            await prisma.auditoria.update({ where: { id: match.id }, data })
+            actualizados.push({
+              id:      match.id,
+              materia: match.materia,
+              docente: match.docente.nombre,
+              grupo:   match.grupo,
+              campos,
+            })
+          }
+        }
+
+        // Si el docente no tiene subcarpetas de grupo, buscar registros por materia+docente sin grupo
+        if (grupoFolders.length === 0) {
+          const update = {}
+          if (tieneplan)    update.planProfesor = true
+          if (tienePresent) update.presentacion  = true
+
+          const matches = auditorias.filter(a =>
+            similar(a.materia,        materiaFolder) &&
+            similar(a.docente.nombre, docenteFolder)
+          )
+
+          for (const match of matches) {
+            const campos = Object.entries(update)
+              .filter(([k, v]) => v === true && !match[k])
+              .map(([k]) => k)
+
+            if (campos.length) {
+              const data = Object.fromEntries(campos.map(k => [k, true]))
+              await prisma.auditoria.update({ where: { id: match.id }, data })
+              actualizados.push({ id: match.id, materia: match.materia, docente: match.docente.nombre, grupo: match.grupo, campos })
+            }
+          }
+        }
+      }
+    }
+
+    res.json({ actualizados, sinCoincidencia, total: actualizados.length })
   } catch (e) { next(e) }
 })
 

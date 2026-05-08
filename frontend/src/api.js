@@ -83,7 +83,8 @@ export const getAuditorias       = (cuatrimestreId) => api.get('/auditorias', { 
 export const crearAuditoria      = (data)           => api.post('/auditorias', data)
 export const actualizarAuditoria = (id, data)       => api.patch(`/auditorias/${id}`, data)
 export const eliminarAuditoria   = (id)             => api.delete(`/auditorias/${id}`)
-export const notificarAuditorias = (data)           => api.post('/auditorias/notificar', data)
+export const notificarAuditorias  = (data)           => api.post('/auditorias/notificar', data)
+export const sincronizarAuditorias = (data)          => api.post('/auditorias/sincronizar', data)
 
 // SSE se construye directamente con EventSource + ?token= en cada componente
 
