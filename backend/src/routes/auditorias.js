@@ -38,6 +38,14 @@ function similar(a, b) {
   return na === nb || na.includes(nb) || nb.includes(na)
 }
 
+/** ¿La carpeta parece ser un contenedor de cuatrimestre? */
+function isCuatrimestreFolder(name) {
+  const n = norm(name)
+  return /cuatrimestre/.test(n) ||
+    /\b(enero|febrero|marzo|abril|mayo|junio|julio|agosto|septiembre|octubre|noviembre|diciembre)\b/.test(n) ||
+    /\b(1er|2do|3er|4to|5to|6to|7mo|8vo|9no|primero|segundo|tercero|cuarto|quinto|sexto|septimo|octavo|noveno)\b/.test(n)
+}
+
 /** Detecta a qué corte (1, 2 o 3) pertenece una carpeta por su nombre */
 function detectCorte(name) {
   const n = norm(name)
@@ -254,12 +262,20 @@ router.post('/sincronizar', requireAuth, async (req, res, next) => {
     if (!cuatrimestre)
       return res.status(404).json({ error: 'Cuatrimestre no encontrado' })
 
-    // Encontrar la subcarpeta que corresponde al cuatrimestre dentro de rutaMaterias
-    const subfolders = getDirs(rutaMaterias)
-    const cuatriFolder = subfolders.find(d => similar(d, cuatrimestre.nombre)) ?? null
+    // Construir lista de carpetas de materia.
+    // Si el primer nivel contiene carpetas de cuatrimestre (ej. "2do Cuatrimestre"),
+    // escaneamos el contenido de TODAS esas carpetas como materias.
+    // Si no, usamos el primer nivel directamente como materias.
+    const nivel1 = getDirs(rutaMaterias)
+    const hayNivelCuatri = nivel1.some(d => isCuatrimestreFolder(d))
 
-    // Si no hay subcarpeta, asumir que rutaMaterias YA ES la carpeta del cuatrimestre
-    const rutaBase = cuatriFolder ? join(rutaMaterias, cuatriFolder) : rutaMaterias
+    // rutaBase se usa solo para el diagnóstico final
+    const rutaBase = rutaMaterias
+
+    // carpetas que contienen {Materia}/{Docente}/...
+    const carpetasMateriaRaices = hayNivelCuatri
+      ? nivel1.filter(d => isCuatrimestreFolder(d)).map(d => join(rutaMaterias, d))
+      : [rutaMaterias]
 
     // Cargar registros existentes y todos los docentes
     let auditorias = await prisma.auditoria.findMany({
@@ -304,8 +320,9 @@ router.post('/sincronizar', requireAuth, async (req, res, next) => {
     }
 
     // ── Escaneo de carpetas ───────────────────────────────────────────────────
-    for (const materiaFolder of getDirs(rutaBase)) {
-      const materiaPath = join(rutaBase, materiaFolder)
+    for (const raiz of carpetasMateriaRaices)
+    for (const materiaFolder of getDirs(raiz)) {
+      const materiaPath = join(raiz, materiaFolder)
 
       for (const docenteFolder of getDirs(materiaPath)) {
         const docentePath = join(materiaPath, docenteFolder)
@@ -363,15 +380,15 @@ router.post('/sincronizar', requireAuth, async (req, res, next) => {
       }
     }
 
-    const carpetasMaterias = getDirs(rutaBase)
+    const carpetasMaterias = carpetasMateriaRaices.flatMap(r => getDirs(r))
     res.json({
       creados,
       actualizados,
       sinDocente,
-      total:         creados.length + actualizados.length,
-      carpetaUsada:  rutaBase,
-      carpetaExiste: carpetasMaterias.length > 0,
-      subcarpetasCuatri: cuatriFolder ?? '(ninguna — usando raíz)',
+      total:           creados.length + actualizados.length,
+      carpetaUsada:    rutaBase,
+      carpetaExiste:   carpetasMaterias.length > 0,
+      nivelCuatri:     hayNivelCuatri,
       carpetasMaterias,
     })
   } catch (e) { next(e) }
