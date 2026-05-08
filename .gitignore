@@ -3,3 +3,5 @@ node_modules/
 *.db
 dist/
 .prisma/
+backend/data/memos-input/
+backend/data/memos-output/
