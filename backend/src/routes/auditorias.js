@@ -261,109 +261,102 @@ router.post('/sincronizar', requireAuth, async (req, res, next) => {
     // Si no hay subcarpeta, asumir que rutaMaterias YA ES la carpeta del cuatrimestre
     const rutaBase = cuatriFolder ? join(rutaMaterias, cuatriFolder) : rutaMaterias
 
-    // Cargar todos los registros del cuatrimestre
-    const auditorias = await prisma.auditoria.findMany({
+    // Cargar registros existentes y todos los docentes
+    let auditorias = await prisma.auditoria.findMany({
       where: { cuatrimestreId: Number(cuatrimestreId) },
       include: { docente: true },
     })
+    const todosDocentes = await prisma.docente.findMany()
 
-    const actualizados = []
-    const sinCoincidencia = []
+    const creados         = []
+    const actualizados    = []
+    const sinDocente      = []   // carpeta de docente sin match en docentes
 
-    // Nivel 1: carpetas de materia
+    /** Busca el docente en BD cuyo nombre mejor coincide con el nombre de carpeta */
+    function buscarDocente(carpeta) {
+      return todosDocentes.find(d => similar(d.nombre, carpeta)) ?? null
+    }
+
+    /** Aplica un objeto de update { campo: true } sobre un registro existente */
+    async function aplicarUpdate(auditoria, update) {
+      const campos = Object.entries(update)
+        .filter(([k, v]) => v === true && !auditoria[k])
+        .map(([k]) => k)
+      if (!campos.length) return
+      const data = Object.fromEntries(campos.map(k => [k, true]))
+      await prisma.auditoria.update({ where: { id: auditoria.id }, data })
+      actualizados.push({ id: auditoria.id, materia: auditoria.materia, docente: auditoria.docente.nombre, grupo: auditoria.grupo, campos })
+    }
+
+    /** Crea un nuevo registro de auditoría y lo agrega al array local */
+    async function crearRegistro(docenteId, nombreDocente, materia, grupo, update) {
+      try {
+        const nuevo = await prisma.auditoria.create({
+          data: { cuatrimestreId: Number(cuatrimestreId), docenteId, materia, grupo, ...update },
+          include: { docente: true },
+        })
+        auditorias.push(nuevo)   // para que coincidencias futuras lo encuentren
+        creados.push({ id: nuevo.id, materia, docente: nombreDocente, grupo, campos: Object.keys(update) })
+      } catch (e) {
+        // Puede haber constraint único si se llama dos veces — ignorar silenciosamente
+        if (!e.message?.includes('Unique')) throw e
+      }
+    }
+
+    // ── Escaneo de carpetas ───────────────────────────────────────────────────
     for (const materiaFolder of getDirs(rutaBase)) {
       const materiaPath = join(rutaBase, materiaFolder)
 
-      // Nivel 2: carpetas de docente
       for (const docenteFolder of getDirs(materiaPath)) {
         const docentePath = join(materiaPath, docenteFolder)
 
+        // Buscar docente en BD por nombre de carpeta
+        const docente = buscarDocente(docenteFolder)
+        if (!docente) {
+          sinDocente.push({ materia: materiaFolder, carpetaDocente: docenteFolder })
+          continue
+        }
+
         // Archivos en nivel docente → planeación y presentación
-        const docFiles      = getFiles(docentePath)
-        const tieneplan     = docFiles.some(isPlaneacion)
-        const tienePresent  = docFiles.some(isPresentacion)
+        const docFiles     = getFiles(docentePath)
+        const tieneplan    = docFiles.some(isPlaneacion)
+        const tienePresent = docFiles.some(isPresentacion)
 
-        // Nivel 3: carpetas de grupo (ignorar si parecen carpetas de corte)
         const grupoFolders = getDirs(docentePath).filter(d => detectCorte(d) === null)
+        const efectivos    = grupoFolders.length ? grupoFolders : ['']   // '' = sin grupo
 
-        for (const grupoFolder of grupoFolders) {
-          const grupoPath = join(docentePath, grupoFolder)
+        for (const grupoFolder of efectivos) {
+          const grupoPath = grupoFolder ? join(docentePath, grupoFolder) : docentePath
 
-          // Construir objeto de actualización — solo marcar true, nunca desmarcar
           const update = {}
-          if (tieneplan)    update.planProfesor  = true
-          if (tienePresent) update.presentacion   = true
+          if (tieneplan)    update.planProfesor = true
+          if (tienePresent) update.presentacion  = true
 
-          // Nivel 4: carpetas de corte
+          // Escanear cortes
           for (const corteFolder of getDirs(grupoPath)) {
             const corteNum = detectCorte(corteFolder)
             if (!corteNum) continue
-
             const cortePath = join(grupoPath, corteFolder)
-
-            // Nivel 5: carpetas de evidencia
             for (const evidFolder of getDirs(cortePath)) {
               const evid = detectEvidencia(evidFolder)
-              if (!evid) continue
-
-              const evidPath = join(cortePath, evidFolder)
-              if (hasFiles(evidPath)) {
+              if (evid && hasFiles(join(cortePath, evidFolder))) {
                 update[`p${corteNum}${evid}`] = true
               }
             }
           }
 
-          // Buscar registro coincidente en BD
+          // Buscar registro existente (materia + docente + grupo)
           const match = auditorias.find(a =>
             similar(a.materia,        materiaFolder) &&
-            similar(a.docente.nombre, docenteFolder) &&
+            a.docenteId === docente.id &&
             similar(a.grupo,          grupoFolder)
           )
 
-          if (!match) {
-            sinCoincidencia.push({ materia: materiaFolder, docente: docenteFolder, grupo: grupoFolder })
-            continue
-          }
-
-          // Solo actualizar campos que cambian de false → true
-          const campos = Object.entries(update)
-            .filter(([k, v]) => v === true && !match[k])
-            .map(([k]) => k)
-
-          if (campos.length) {
-            const data = Object.fromEntries(campos.map(k => [k, true]))
-            await prisma.auditoria.update({ where: { id: match.id }, data })
-            actualizados.push({
-              id:      match.id,
-              materia: match.materia,
-              docente: match.docente.nombre,
-              grupo:   match.grupo,
-              campos,
-            })
-          }
-        }
-
-        // Si el docente no tiene subcarpetas de grupo, buscar registros por materia+docente sin grupo
-        if (grupoFolders.length === 0) {
-          const update = {}
-          if (tieneplan)    update.planProfesor = true
-          if (tienePresent) update.presentacion  = true
-
-          const matches = auditorias.filter(a =>
-            similar(a.materia,        materiaFolder) &&
-            similar(a.docente.nombre, docenteFolder)
-          )
-
-          for (const match of matches) {
-            const campos = Object.entries(update)
-              .filter(([k, v]) => v === true && !match[k])
-              .map(([k]) => k)
-
-            if (campos.length) {
-              const data = Object.fromEntries(campos.map(k => [k, true]))
-              await prisma.auditoria.update({ where: { id: match.id }, data })
-              actualizados.push({ id: match.id, materia: match.materia, docente: match.docente.nombre, grupo: match.grupo, campos })
-            }
+          if (match) {
+            await aplicarUpdate(match, update)
+          } else if (Object.keys(update).length > 0) {
+            // Crear registro nuevo con los campos encontrados
+            await crearRegistro(docente.id, docente.nombre, materiaFolder, grupoFolder, update)
           }
         }
       }
@@ -371,13 +364,14 @@ router.post('/sincronizar', requireAuth, async (req, res, next) => {
 
     const carpetasMaterias = getDirs(rutaBase)
     res.json({
+      creados,
       actualizados,
-      sinCoincidencia,
-      total: actualizados.length,
-      carpetaUsada: rutaBase,
+      sinDocente,
+      total:         creados.length + actualizados.length,
+      carpetaUsada:  rutaBase,
       carpetaExiste: carpetasMaterias.length > 0,
       subcarpetasCuatri: cuatriFolder ?? '(ninguna — usando raíz)',
-      carpetasMaterias,          // para diagnóstico
+      carpetasMaterias,
     })
   } catch (e) { next(e) }
 })

@@ -225,53 +225,77 @@ function ModalResultadoSync({ resultado, onCerrar }) {
           </p>
         )}
 
-        <div style={{ display: 'flex', gap: 12, marginBottom: 16 }}>
-          <div style={{ flex: 1, background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 8, padding: 12, textAlign: 'center' }}>
-            <div style={{ fontSize: 28, fontWeight: 700, color: '#16a34a' }}>{resultado.total}</div>
-            <div style={{ fontSize: 11, color: '#166534' }}>registros actualizados</div>
+        {/* Contadores */}
+        <div style={{ display: 'flex', gap: 10, marginBottom: 16 }}>
+          <div style={{ flex: 1, background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 8, padding: 10, textAlign: 'center' }}>
+            <div style={{ fontSize: 24, fontWeight: 700, color: '#16a34a' }}>{resultado.creados?.length ?? 0}</div>
+            <div style={{ fontSize: 11, color: '#166534' }}>creados</div>
           </div>
-          <div style={{ flex: 1, background: resultado.sinCoincidencia.length ? '#fff7ed' : '#f9fafb', border: `1px solid ${resultado.sinCoincidencia.length ? '#fed7aa' : '#e5e7eb'}`, borderRadius: 8, padding: 12, textAlign: 'center' }}>
-            <div style={{ fontSize: 28, fontWeight: 700, color: resultado.sinCoincidencia.length ? '#ea580c' : '#9ca3af' }}>{resultado.sinCoincidencia.length}</div>
-            <div style={{ fontSize: 11, color: resultado.sinCoincidencia.length ? '#9a3412' : '#6b7280' }}>sin coincidencia</div>
+          <div style={{ flex: 1, background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: 8, padding: 10, textAlign: 'center' }}>
+            <div style={{ fontSize: 24, fontWeight: 700, color: '#2563eb' }}>{resultado.actualizados?.length ?? 0}</div>
+            <div style={{ fontSize: 11, color: '#1d4ed8' }}>actualizados</div>
+          </div>
+          <div style={{ flex: 1, background: resultado.sinDocente?.length ? '#fff7ed' : '#f9fafb', border: `1px solid ${resultado.sinDocente?.length ? '#fed7aa' : '#e5e7eb'}`, borderRadius: 8, padding: 10, textAlign: 'center' }}>
+            <div style={{ fontSize: 24, fontWeight: 700, color: resultado.sinDocente?.length ? '#ea580c' : '#9ca3af' }}>{resultado.sinDocente?.length ?? 0}</div>
+            <div style={{ fontSize: 11, color: resultado.sinDocente?.length ? '#9a3412' : '#6b7280' }}>sin docente</div>
           </div>
         </div>
 
-        {resultado.actualizados.length > 0 && (
+        {/* Registros creados */}
+        {resultado.creados?.length > 0 && (
           <div style={{ marginBottom: 12 }}>
-            <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 6, color: '#166534' }}>✅ Actualizados</div>
-            <div style={{ maxHeight: 200, overflowY: 'auto', border: '1px solid #e5e7eb', borderRadius: 6 }}>
-              {resultado.actualizados.map((r, i) => (
-                <div key={i} style={{ padding: '6px 10px', borderBottom: '1px solid #f3f4f6', fontSize: 11 }}>
+            <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 6, color: '#166534' }}>✅ Registros creados</div>
+            <div style={{ maxHeight: 180, overflowY: 'auto', border: '1px solid #bbf7d0', borderRadius: 6 }}>
+              {resultado.creados.map((r, i) => (
+                <div key={i} style={{ padding: '6px 10px', borderBottom: '1px solid #f0fdf4', fontSize: 11 }}>
                   <strong>{r.materia}</strong> — {r.docente}
                   {r.grupo ? <span style={{ color: '#888' }}> ({r.grupo})</span> : null}
-                  <br />
-                  <span style={{ color: '#16a34a' }}>{r.campos.map(k => CAMPO_LABEL[k] ?? k).join(', ')}</span>
+                  {r.campos?.length > 0 && <><br /><span style={{ color: '#16a34a' }}>{r.campos.map(k => CAMPO_LABEL[k] ?? k).join(', ')}</span></>}
                 </div>
               ))}
             </div>
           </div>
         )}
 
-        {resultado.sinCoincidencia.length > 0 && (
+        {/* Registros actualizados */}
+        {resultado.actualizados?.length > 0 && (
           <div style={{ marginBottom: 12 }}>
-            <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 6, color: '#ea580c' }}>⚠️ Carpetas sin registro en la tabla</div>
-            <div style={{ maxHeight: 140, overflowY: 'auto', border: '1px solid #fed7aa', borderRadius: 6, background: '#fff7ed' }}>
-              {resultado.sinCoincidencia.map((r, i) => (
-                <div key={i} style={{ padding: '5px 10px', borderBottom: '1px solid #fed7aa', fontSize: 11, color: '#9a3412' }}>
-                  {r.materia} / {r.docente} / {r.grupo}
+            <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 6, color: '#1d4ed8' }}>🔄 Checkboxes actualizados</div>
+            <div style={{ maxHeight: 160, overflowY: 'auto', border: '1px solid #bfdbfe', borderRadius: 6 }}>
+              {resultado.actualizados.map((r, i) => (
+                <div key={i} style={{ padding: '6px 10px', borderBottom: '1px solid #eff6ff', fontSize: 11 }}>
+                  <strong>{r.materia}</strong> — {r.docente}
+                  {r.grupo ? <span style={{ color: '#888' }}> ({r.grupo})</span> : null}
+                  <br /><span style={{ color: '#2563eb' }}>{r.campos.map(k => CAMPO_LABEL[k] ?? k).join(', ')}</span>
                 </div>
               ))}
             </div>
-            <p style={{ fontSize: 11, color: '#888', marginTop: 6 }}>Agrégalos con <strong>+ Agregar</strong> y vuelve a sincronizar.</p>
           </div>
         )}
 
-        {resultado.total === 0 && resultado.sinCoincidencia.length === 0 && (
+        {/* Carpetas sin docente en BD */}
+        {resultado.sinDocente?.length > 0 && (
+          <div style={{ marginBottom: 12 }}>
+            <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 6, color: '#ea580c' }}>⚠️ Sin docente registrado en el sistema</div>
+            <div style={{ maxHeight: 120, overflowY: 'auto', border: '1px solid #fed7aa', borderRadius: 6, background: '#fff7ed' }}>
+              {resultado.sinDocente.map((r, i) => (
+                <div key={i} style={{ padding: '5px 10px', borderBottom: '1px solid #fed7aa', fontSize: 11, color: '#9a3412' }}>
+                  📁 {r.carpetaDocente} <span style={{ color: '#c2410c' }}>({r.materia})</span>
+                </div>
+              ))}
+            </div>
+            <p style={{ fontSize: 11, color: '#888', marginTop: 6 }}>
+              Da de alta estos docentes en <strong>Docentes</strong> con el mismo nombre de la carpeta.
+            </p>
+          </div>
+        )}
+
+        {/* Sin cambios */}
+        {resultado.total === 0 && !resultado.sinDocente?.length && (
           <div>
-            {resultado.carpetaExiste === false ? (
+            {!resultado.carpetaExiste ? (
               <div style={{ background: '#fef2f2', border: '1px solid #fca5a5', borderRadius: 8, padding: 12, fontSize: 12, color: '#b91c1c' }}>
-                ❌ <strong>La carpeta no contiene subcarpetas de materias.</strong><br />
-                Verifica que la ruta apunte a la carpeta correcta.<br />
+                ❌ <strong>La carpeta no contiene subcarpetas.</strong> Verifica la ruta:<br />
                 <span style={{ fontFamily: 'monospace', wordBreak: 'break-all' }}>{resultado.carpetaUsada}</span>
               </div>
             ) : (
@@ -281,7 +305,7 @@ function ModalResultadoSync({ resultado, onCerrar }) {
             )}
             {resultado.carpetasMaterias?.length > 0 && (
               <div style={{ marginTop: 10, fontSize: 11, color: '#888' }}>
-                <strong>Carpetas encontradas en:</strong> <span style={{ fontFamily: 'monospace' }}>{resultado.carpetaUsada}</span>
+                <strong>Subcarpetas vistas en:</strong> <span style={{ fontFamily: 'monospace', wordBreak: 'break-all' }}>{resultado.carpetaUsada}</span>
                 <div style={{ maxHeight: 100, overflowY: 'auto', background: '#f9fafb', borderRadius: 6, padding: '6px 10px', marginTop: 4 }}>
                   {resultado.carpetasMaterias.map((c, i) => <div key={i}>📁 {c}</div>)}
                 </div>
