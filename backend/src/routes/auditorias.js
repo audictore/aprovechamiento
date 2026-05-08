@@ -267,9 +267,6 @@ router.post('/sincronizar', requireAuth, async (req, res, next) => {
       include: { docente: true },
     })
 
-    if (!auditorias.length)
-      return res.status(400).json({ error: 'No hay registros de auditoría para este cuatrimestre' })
-
     const actualizados = []
     const sinCoincidencia = []
 
@@ -372,7 +369,16 @@ router.post('/sincronizar', requireAuth, async (req, res, next) => {
       }
     }
 
-    res.json({ actualizados, sinCoincidencia, total: actualizados.length, carpetaUsada: rutaBase })
+    const carpetasMaterias = getDirs(rutaBase)
+    res.json({
+      actualizados,
+      sinCoincidencia,
+      total: actualizados.length,
+      carpetaUsada: rutaBase,
+      carpetaExiste: carpetasMaterias.length > 0,
+      subcarpetasCuatri: cuatriFolder ?? '(ninguna — usando raíz)',
+      carpetasMaterias,          // para diagnóstico
+    })
   } catch (e) { next(e) }
 })
 

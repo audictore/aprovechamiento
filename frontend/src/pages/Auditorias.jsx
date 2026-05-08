@@ -267,9 +267,27 @@ function ModalResultadoSync({ resultado, onCerrar }) {
         )}
 
         {resultado.total === 0 && resultado.sinCoincidencia.length === 0 && (
-          <p style={{ fontSize: 13, color: '#6b7280', textAlign: 'center', padding: '12px 0' }}>
-            No se encontraron cambios pendientes. Todo ya está al día.
-          </p>
+          <div>
+            {resultado.carpetaExiste === false ? (
+              <div style={{ background: '#fef2f2', border: '1px solid #fca5a5', borderRadius: 8, padding: 12, fontSize: 12, color: '#b91c1c' }}>
+                ❌ <strong>La carpeta no contiene subcarpetas de materias.</strong><br />
+                Verifica que la ruta apunte a la carpeta correcta.<br />
+                <span style={{ fontFamily: 'monospace', wordBreak: 'break-all' }}>{resultado.carpetaUsada}</span>
+              </div>
+            ) : (
+              <p style={{ fontSize: 13, color: '#6b7280', textAlign: 'center', padding: '12px 0' }}>
+                ✅ No hay cambios nuevos. Todo ya está registrado.
+              </p>
+            )}
+            {resultado.carpetasMaterias?.length > 0 && (
+              <div style={{ marginTop: 10, fontSize: 11, color: '#888' }}>
+                <strong>Carpetas encontradas en:</strong> <span style={{ fontFamily: 'monospace' }}>{resultado.carpetaUsada}</span>
+                <div style={{ maxHeight: 100, overflowY: 'auto', background: '#f9fafb', borderRadius: 6, padding: '6px 10px', marginTop: 4 }}>
+                  {resultado.carpetasMaterias.map((c, i) => <div key={i}>📁 {c}</div>)}
+                </div>
+              </div>
+            )}
+          </div>
         )}
 
         <button className="btn" onClick={onCerrar}>Cerrar</button>
@@ -287,10 +305,11 @@ export default function Auditorias() {
   const [loading,         setLoading]         = useState(false)
   const [modalAgregar,     setModalAgregar]     = useState(false)
   const [modalNotificar,   setModalNotificar]   = useState(false)
-  const [resultadoSync,    setResultadoSync]    = useState(null)   // resultado de la última sync
+  const [resultadoSync,    setResultadoSync]    = useState(null)
   const [sincronizando,    setSincronizando]    = useState(false)
-  const [rutaMaterias,     setRutaMaterias]     = useState('')     // ruta guardada
-  const [editandoRuta,     setEditandoRuta]     = useState(false)  // muestra input para cambiar ruta
+  const [errorSync,        setErrorSync]        = useState('')
+  const [rutaMaterias,     setRutaMaterias]     = useState('')
+  const [editandoRuta,     setEditandoRuta]     = useState(false)
   const [rutaInput,        setRutaInput]        = useState('')
   const [pendingUpdates,  setPendingUpdates]  = useState({}) // { rowId: { campo: valor } }
   const { addToast } = useToast()
@@ -346,16 +365,17 @@ export default function Auditorias() {
 
   async function sincronizar() {
     if (!cuatriId) return
+    if (!rutaMaterias) { setEditandoRuta(true); return }
     setSincronizando(true)
+    setErrorSync('')
     try {
-      // Si no hay ruta guardada, pedir una
-      if (!rutaMaterias) { setEditandoRuta(true); return }
       const { data } = await sincronizarAuditorias({ cuatrimestreId: cuatriId })
       setResultadoSync(data)
-      // Recargar tabla
       getAuditorias(cuatriId).then(r => setRows(r.data)).catch(() => {})
     } catch (e) {
-      addToast(e.response?.data?.error ?? e.message, 'error')
+      const msg = e.response?.data?.error ?? e.message ?? 'Error desconocido'
+      setErrorSync(msg)
+      console.error('[sincronizar]', e)
     } finally {
       setSincronizando(false)
     }
@@ -472,6 +492,17 @@ export default function Auditorias() {
       {!editandoRuta && !rutaMaterias && (
         <div style={{ fontSize: 12, color: '#ea580c', marginBottom: 10 }}>
           ⚠️ Configura la ruta de la carpeta con <strong>⚙️</strong> para poder sincronizar.
+        </div>
+      )}
+
+      {errorSync && (
+        <div style={{ background: '#fef2f2', border: '1px solid #fca5a5', borderRadius: 8, padding: '10px 14px', marginBottom: 12, fontSize: 12, color: '#b91c1c', display: 'flex', alignItems: 'flex-start', gap: 8 }}>
+          <span>❌</span>
+          <div>
+            <strong>Error al sincronizar:</strong> {errorSync}
+            <br /><span style={{ color: '#888' }}>Verifica que la ruta existe y que el servidor tiene acceso a esa carpeta.</span>
+          </div>
+          <button onClick={() => setErrorSync('')} style={{ marginLeft: 'auto', background: 'none', border: 'none', cursor: 'pointer', color: '#b91c1c', fontSize: 16, lineHeight: 1 }}>✕</button>
         </div>
       )}
 
