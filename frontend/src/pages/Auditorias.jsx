@@ -7,6 +7,17 @@ import {
 } from '../api.js'
 import { useToast } from '../components/Toast.jsx'
 
+// ─── Parser de programa → { cuatrimestre, tsu } ──────────────────────────────
+// Espera nombres como "2do Cuatrimestre", "5to Cuatrimestre GCH", etc.
+function parsarPrograma(programa) {
+  if (!programa) return { cuatrimestre: '—', tsu: 'N/A' }
+  const m = programa.match(/^(.*?cuatrimestre)\s*(.*?)$/i)
+  if (!m) return { cuatrimestre: programa, tsu: 'N/A' }
+  const cuatrimestre = m[1].trim()
+  const tsu = m[2].replace(/[()]/g, '').trim() || 'N/A'
+  return { cuatrimestre, tsu }
+}
+
 // ─── Columnas del checklist ───────────────────────────────────────────────────
 const PLAN_COLS = [
   { key: 'planProfesor',    label: 'P',    tipo: 'bool' },
@@ -424,14 +435,6 @@ export default function Auditorias() {
     }
   }
 
-  // Agrupar filas por grupo
-  const grupos = {}
-  for (const row of rows) {
-    const g = row.grupo || '—'
-    if (!grupos[g]) grupos[g] = []
-    grupos[g].push(row)
-  }
-
   const thStyle = {
     background: '#a50021', color: '#fff', fontSize: 10, fontWeight: 700,
     padding: '4px 6px', textAlign: 'center', whiteSpace: 'nowrap', border: '1px solid #8b001c',
@@ -541,11 +544,12 @@ export default function Auditorias() {
         <div style={{ overflowX: 'auto' }}>
           <table style={{ borderCollapse: 'collapse', fontSize: 11, minWidth: 900 }}>
             <thead>
-              {/* Fila 1: grupos de columnas */}
               <tr>
-                <th rowSpan={2} style={{ ...thGray, minWidth: 140 }}>Materia</th>
-                <th rowSpan={2} style={{ ...thGray, minWidth: 120 }}>Docente</th>
-                <th rowSpan={2} style={{ ...thGray, minWidth: 80 }}>Grupo</th>
+                <th rowSpan={2} style={{ ...thGray, minWidth: 130 }}>Cuatrimestre</th>
+                <th rowSpan={2} style={{ ...thGray, minWidth: 70 }}>TSU</th>
+                <th rowSpan={2} style={{ ...thGray, minWidth: 60 }}>Grupo</th>
+                <th rowSpan={2} style={{ ...thGray, minWidth: 150 }}>Materia</th>
+                <th rowSpan={2} style={{ ...thGray, minWidth: 140 }}>Docente</th>
                 <th colSpan={4} style={thStyle}>Planeación</th>
                 <th colSpan={1} style={thStyle}>Inicio</th>
                 <th colSpan={5} style={{ ...thStyle, background: '#7b1517' }}>1er Corte</th>
@@ -554,43 +558,38 @@ export default function Auditorias() {
                 <th rowSpan={2} style={{ ...thGray, minWidth: 90 }}>Avance</th>
                 <th rowSpan={2} style={thGray}></th>
               </tr>
-              {/* Fila 2: columnas individuales */}
               <tr>
                 {ALL_COLS.map(c => <th key={c.key} style={thStyle}>{c.label}</th>)}
               </tr>
             </thead>
             <tbody>
-              {Object.entries(grupos).map(([grupo, filas]) => (
-                <>
-                  <tr key={`g-${grupo}`}>
-                    <td colSpan={ALL_COLS.length + 5} style={{ background: '#f3f4f6', fontWeight: 700, fontSize: 11, padding: '4px 8px', color: '#444' }}>
-                      {grupo}
-                    </td>
-                  </tr>
-                  {filas.map(row => (
-                    <tr key={row.id} style={{ borderBottom: '1px solid #e5e7eb' }}>
-                      <td style={{ padding: '3px 8px', fontWeight: 600 }}>{row.materia}</td>
-                      <td style={{ padding: '3px 8px', color: '#555' }}>{row.docente?.nombre}</td>
-                      <td style={{ padding: '3px 8px', color: '#888', fontSize: 10 }}>{row.grupo}</td>
-                      {ALL_COLS.map(col => (
-                        <Celda key={col.key} row={row} col={col} onChange={handleChange} />
-                      ))}
-                      <Progreso row={row} />
-                      <td style={{ padding: '2px 4px' }}>
-                        <button
-                          onClick={() => eliminar(row.id)}
-                          style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#ef4444', fontSize: 14 }}
-                          title="Eliminar"
-                        >🗑</button>
-                      </td>
-                    </tr>
+              {rows.map(row => {
+                const { cuatrimestre, tsu } = parsarPrograma(row.programa)
+                return (
+                <tr key={row.id} style={{ borderBottom: '1px solid #e5e7eb' }}>
+                  <td style={{ padding: '3px 8px', color: '#555', fontSize: 10 }}>{cuatrimestre}</td>
+                  <td style={{ padding: '3px 8px', color: tsu === 'N/A' ? '#bbb' : '#555', fontSize: 10, textAlign: 'center' }}>{tsu}</td>
+                  <td style={{ padding: '3px 8px', color: '#777', fontSize: 10, textAlign: 'center' }}>{row.grupo || '—'}</td>
+                  <td style={{ padding: '3px 8px', fontWeight: 600 }}>{row.materia}</td>
+                  <td style={{ padding: '3px 8px', color: '#555' }}>{row.docente?.nombre}</td>
+                  {ALL_COLS.map(col => (
+                    <Celda key={col.key} row={row} col={col} onChange={handleChange} />
                   ))}
-                </>
-              ))}
+                  <Progreso row={row} />
+                  <td style={{ padding: '2px 4px' }}>
+                    <button
+                      onClick={() => eliminar(row.id)}
+                      style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#ef4444', fontSize: 14 }}
+                      title="Eliminar"
+                    >🗑</button>
+                  </td>
+                </tr>
+              )})}
+
               {!rows.length && (
                 <tr>
-                  <td colSpan={ALL_COLS.length + 5} style={{ textAlign: 'center', padding: 32, color: '#aaa' }}>
-                    No hay registros. Agrega el primero con el botón <strong>+ Agregar</strong>.
+                  <td colSpan={ALL_COLS.length + 7} style={{ textAlign: 'center', padding: 32, color: '#aaa' }}>
+                    No hay registros. Sincroniza con el botón <strong>📂 Sincronizar</strong> o agrega con <strong>+ Agregar</strong>.
                   </td>
                 </tr>
               )}

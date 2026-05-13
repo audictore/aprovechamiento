@@ -85,6 +85,9 @@ export async function buildJobs(config, inputDir, outputDir, log = console.log) 
     const peCfg = config.programa_educativo[peKey]
     const coordinador = peCfg?.coordinador || config.programa_educativo[Object.keys(config.programa_educativo)[0]].coordinador
     const secretaria  = config.secretaria_academica
+    const jefeRH                  = config.jefe_rh ?? { nombre: 'Recursos Humanos', cargo_corto: 'Recursos Humanos', cargo_largo: 'Recursos Humanos' }
+    const destinatariosAdicionales = (config.destinatarios_adicionales || []).filter(d => d.nombre)
+    const copiasAdicionales        = (config.copias_adicionales        || []).filter(d => d.nombre)
 
     const horKey = docente.nombreKey
     const horario = horarioMap.get(horKey) || null
@@ -171,6 +174,9 @@ export async function buildJobs(config, inputDir, outputDir, log = console.log) 
       docente,
       coordinador,
       secretaria,
+      jefeRH,
+      destinatariosAdicionales,
+      copiasAdicionales,
       fecha,
       referencia,
       asunto,

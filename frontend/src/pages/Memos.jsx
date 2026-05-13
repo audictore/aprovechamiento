@@ -36,7 +36,13 @@ function SeccionConfig({ onSaved }) {
   async function guardar() {
     setSaving(true)
     try {
-      await saveMemosConfig(cfg)
+      // Coordinador único: copiar LAGE → LAD antes de guardar
+      const payload = JSON.parse(JSON.stringify(cfg))
+      const coordLage = payload.programa_educativo?.LAGE?.coordinador
+      if (coordLage && payload.programa_educativo?.LAD) {
+        payload.programa_educativo.LAD.coordinador = { ...coordLage }
+      }
+      await saveMemosConfig(payload)
       addToast('Configuración guardada', 'success')
       onSaved?.()
     } catch (e) {
@@ -59,31 +65,199 @@ function SeccionConfig({ onSaved }) {
     </div>
   )
 
+  const subTitle = (text) => (
+    <div style={{
+      fontSize: 11, fontWeight: 700, letterSpacing: '0.06em',
+      color: 'var(--text)', opacity: 0.5, textTransform: 'uppercase',
+      marginBottom: 8,
+    }}>
+      {text}
+    </div>
+  )
+
+  const subBlock = (title, children) => (
+    <div style={{
+      border: '1px solid var(--border)',
+      borderRadius: 8,
+      padding: '14px 16px',
+      display: 'flex',
+      flexDirection: 'column',
+      gap: 10,
+    }}>
+      {subTitle(title)}
+      {children}
+    </div>
+  )
+
+  const personaFields = (prefix, labels = {}) => (
+    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+      {field(labels.nombre      ?? 'Nombre',      `${prefix}.nombre`)}
+      {field(labels.cargo_corto ?? 'Cargo corto', `${prefix}.cargo_corto`)}
+      {field(labels.cargo_largo ?? 'Cargo largo', `${prefix}.cargo_largo`)}
+    </div>
+  )
+
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-        {field('Cuatrimestre', 'cuatrimestre')}
-        {field('Año de referencia', 'anio_ref', 'number')}
-        {field('Prefijo de referencia', 'ref_prefix')}
-        {field('Número inicial de referencia', 'ref_number')}
-      </div>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
 
-      <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text)', opacity: 0.7, marginTop: 4 }}>
-        COORDINADOR — LAGE
-      </div>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-        {field('Nombre', 'programa_educativo.LAGE.coordinador.nombre')}
-        {field('Cargo corto', 'programa_educativo.LAGE.coordinador.cargo_corto')}
-        {field('Cargo largo', 'programa_educativo.LAGE.coordinador.cargo_largo')}
-      </div>
+      {/* ── Datos del memo ── */}
+      {subBlock('Datos del memo',
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+          {field('Cuatrimestre',                'cuatrimestre')}
+          {field('Año de referencia',           'anio_ref', 'number')}
+          {field('Prefijo de referencia',       'ref_prefix')}
+          {field('Número inicial de referencia','ref_number')}
+        </div>
+      )}
 
-      <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text)', opacity: 0.7, marginTop: 4 }}>
-        SECRETARÍA ACADÉMICA
-      </div>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-        {field('Nombre', 'secretaria_academica.nombre')}
-        {field('Cargo corto', 'secretaria_academica.cargo_corto')}
-      </div>
+      {/* ── Memo para quién ── */}
+      {subBlock('Memo para quién',
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+
+          {/* Coordinador principal (siempre presente) */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+            {field('Nombre', 'programa_educativo.LAGE.coordinador.nombre')}
+            {field('Cargo',  'programa_educativo.LAGE.coordinador.cargo_largo')}
+          </div>
+
+          {/* Destinatarios adicionales */}
+          {(cfg.destinatarios_adicionales || []).map((dest, idx) => (
+            <div key={idx} style={{
+              display: 'grid', gridTemplateColumns: '1fr 1fr auto', gap: 10, alignItems: 'end',
+            }}>
+              <div className="field">
+                <label style={{ fontSize: 12 }}>Nombre</label>
+                <input
+                  type="text"
+                  value={dest.nombre || ''}
+                  onChange={e => {
+                    const arr = [...(cfg.destinatarios_adicionales || [])]
+                    arr[idx] = { ...arr[idx], nombre: e.target.value }
+                    set('destinatarios_adicionales', arr)
+                  }}
+                />
+              </div>
+              <div className="field">
+                <label style={{ fontSize: 12 }}>Cargo</label>
+                <input
+                  type="text"
+                  value={dest.cargo || ''}
+                  onChange={e => {
+                    const arr = [...(cfg.destinatarios_adicionales || [])]
+                    arr[idx] = { ...arr[idx], cargo: e.target.value }
+                    set('destinatarios_adicionales', arr)
+                  }}
+                />
+              </div>
+              <button
+                onClick={() => {
+                  const arr = (cfg.destinatarios_adicionales || []).filter((_, i) => i !== idx)
+                  set('destinatarios_adicionales', arr)
+                }}
+                title="Eliminar"
+                style={{
+                  background: 'none', border: '1px solid var(--border)', borderRadius: 6,
+                  cursor: 'pointer', color: '#A32D2D', fontSize: 16,
+                  width: 36, height: 36, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  flexShrink: 0,
+                }}
+              >✕</button>
+            </div>
+          ))}
+
+          {/* Botón añadir */}
+          <div>
+            <button
+              className="btn"
+              style={{ fontSize: 12 }}
+              onClick={() => {
+                const arr = [...(cfg.destinatarios_adicionales || []), { nombre: '', cargo: '' }]
+                set('destinatarios_adicionales', arr)
+              }}
+            >
+              + Añadir destinatario
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ── Copias del memo ── */}
+      {subBlock('Copias del memo',
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <div>
+            <div style={{ fontSize: 11, opacity: 0.45, marginBottom: 6 }}>Secretaría Académica</div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+              {field('Nombre', 'secretaria_academica.nombre')}
+              {field('Cargo',  'secretaria_academica.cargo_largo')}
+            </div>
+          </div>
+          <div>
+            <div style={{ fontSize: 11, opacity: 0.45, marginBottom: 6 }}>Jefe de Recursos Humanos</div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+              {field('Nombre', 'jefe_rh.nombre')}
+              {field('Cargo',  'jefe_rh.cargo_largo')}
+            </div>
+          </div>
+
+          {/* Copias adicionales */}
+          {(cfg.copias_adicionales || []).map((copia, idx) => (
+            <div key={idx} style={{
+              display: 'grid', gridTemplateColumns: '1fr 1fr auto', gap: 10, alignItems: 'end',
+            }}>
+              <div className="field">
+                <label style={{ fontSize: 12 }}>Nombre</label>
+                <input
+                  type="text"
+                  value={copia.nombre || ''}
+                  onChange={e => {
+                    const arr = [...(cfg.copias_adicionales || [])]
+                    arr[idx] = { ...arr[idx], nombre: e.target.value }
+                    set('copias_adicionales', arr)
+                  }}
+                />
+              </div>
+              <div className="field">
+                <label style={{ fontSize: 12 }}>Cargo</label>
+                <input
+                  type="text"
+                  value={copia.cargo || ''}
+                  onChange={e => {
+                    const arr = [...(cfg.copias_adicionales || [])]
+                    arr[idx] = { ...arr[idx], cargo: e.target.value }
+                    set('copias_adicionales', arr)
+                  }}
+                />
+              </div>
+              <button
+                onClick={() => {
+                  const arr = (cfg.copias_adicionales || []).filter((_, i) => i !== idx)
+                  set('copias_adicionales', arr)
+                }}
+                title="Eliminar"
+                style={{
+                  background: 'none', border: '1px solid var(--border)', borderRadius: 6,
+                  cursor: 'pointer', color: '#A32D2D', fontSize: 16,
+                  width: 36, height: 36, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  flexShrink: 0,
+                }}
+              >✕</button>
+            </div>
+          ))}
+
+          <div>
+            <button
+              className="btn"
+              style={{ fontSize: 12 }}
+              onClick={() => {
+                const arr = [...(cfg.copias_adicionales || []), { nombre: '', cargo: '' }]
+                set('copias_adicionales', arr)
+              }}
+            >
+              + Añadir copia
+            </button>
+          </div>
+        </div>
+      )}
 
       <div>
         <button className="btn btn-primary" onClick={guardar} disabled={saving} style={{ minWidth: 140 }}>

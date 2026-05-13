@@ -201,7 +201,7 @@ function buildEncabezadoTable(job) {
               hdrBlank(),
               hdrBlank(),
               hdrPara(`Para: ${job.coordinador.nombre}`),
-              hdrPara(`Cargo: ${job.coordinador.cargo_corto}`),
+              hdrPara(`Cargo: ${job.coordinador.cargo_largo}`),
               hdrBlank(),
               hdrPara(`De: ${job.docente.nombre}`),
               hdrPara(`Cargo: ${job.cargoDocente}`),
@@ -447,36 +447,56 @@ function buildDestinatariosTable(job, tableWidth) {
           dHdr('Fecha',    1, cols[4], false),
         ],
       }),
-      // Para: → coordinador
+      // Para: → coordinador principal
       new TableRow({
         children: [
           dLabel('Para:'),
           dData(job.coordinador.nombre,      1, true),
-          dData(job.coordinador.cargo_corto, 2, true),
+          dData(job.coordinador.cargo_largo, 2, true),
           dData('', 3),
           dData('', 4),
         ],
       }),
+      // Para: → destinatarios adicionales
+      ...(job.destinatariosAdicionales || []).map(dest => new TableRow({
+        children: [
+          dLabel('Para:'),
+          dData(dest.nombre, 1, true),
+          dData(dest.cargo,  2, true),
+          dData('', 3),
+          dData('', 4),
+        ],
+      })),
       // C.c.p. → secretaria
       new TableRow({
         children: [
           dLabel('C.c.p.'),
           dData(job.secretaria.nombre + '.', 1, true),
-          dData(job.secretaria.cargo_corto,  2, true),
+          dData(job.secretaria.cargo_largo,  2, true),
           dData('', 3),
           dData('', 4),
         ],
       }),
-      // C.c.p. → Recursos Humanos
+      // C.c.p. → Jefe de Recursos Humanos
       new TableRow({
         children: [
           dLabel('C.c.p.'),
-          dData('Recursos Humanos', 1, true),
-          dData('Recursos Humanos', 2, true),
+          dData(job.jefeRH.nombre,      1, true),
+          dData(job.jefeRH.cargo_largo, 2, true),
           dData('', 3),
           dData('', 4),
         ],
       }),
+      // C.c.p. → copias adicionales
+      ...(job.copiasAdicionales || []).map(copia => new TableRow({
+        children: [
+          dLabel('C.c.p.'),
+          dData(copia.nombre, 1, true),
+          dData(copia.cargo,  2, true),
+          dData('', 3),
+          dData('', 4),
+        ],
+      })),
     ],
   })
 }
@@ -503,8 +523,13 @@ function buildFirmasSection(job) {
   }))
   elements.push(new Paragraph({
     alignment: AlignmentType.CENTER,
-    spacing: { before: 40, after: 80, line: 240, lineRule: 'auto' },
+    spacing: { before: 40, after: 0, line: 240, lineRule: 'auto' },
     children: [new TextRun({ text: job.docente.nombre, bold: true })],
+  }))
+  elements.push(new Paragraph({
+    alignment: AlignmentType.CENTER,
+    spacing: { before: 0, after: 80, line: 240, lineRule: 'auto' },
+    children: [new TextRun({ text: job.cargoDocente })],
   }))
 
   // Tabla de destinatarios (5 columnas, cabecera gris)
@@ -610,46 +635,94 @@ function cellFill(excelCell) {
   return null
 }
 
-const RESUMEN_RE = /resumen\s*de\s*horas|docencia/i
+/** Extrae la duración en horas de un rango como "7:00 - 8:00" o "13:00 - 15:00" */
+function parseHoraDuracion(horaStr) {
+  const m = horaStr.match(/(\d{1,2})[:.](\d{0,2})\s*[-–]\s*(\d{1,2})[:.](\d{0,2})/)
+  if (!m) return 1
+  const inicio = parseInt(m[1]) + (parseInt(m[2] || '0') / 60)
+  const fin    = parseInt(m[3]) + (parseInt(m[4] || '0') / 60)
+  return Math.max(0, fin - inicio)
+}
 
-/** Lee la tabla "Resumen de horas" del Excel (si existe) y devuelve { headers, values } */
-async function readResumenTable(xlsxFile, sheetName) {
-  if (!xlsxFile || !fs.existsSync(xlsxFile)) return null
-  const wb = new ExcelJS.Workbook()
-  await wb.xlsx.readFile(xlsxFile)
-  const ws = sheetName ? wb.getWorksheet(sheetName) : wb.worksheets[0]
-  if (!ws) return null
+/** Clasifica una actividad del horario */
+function clasificarActividad(texto) {
+  const n = (texto || '').toLowerCase()
+    .normalize('NFD').replace(/\p{Mn}/gu, '')
+    .trim()
+  if (!n) return null
+  if (/tutori/.test(n))                                   return 'tutorias'
+  if (/preparac|gestion|investigac|asesoria/.test(n))     return 'extraClase'
+  return 'docencia'
+}
 
-  const totalCols = ws.columnCount || 10
+/** Calcula el resumen de horas a partir de las filas del horario */
+function calcularResumen(horarioRows) {
+  if (!horarioRows || horarioRows.length < 2) return null
 
-  for (let r = 1; r <= ws.rowCount; r++) {
-    const rowText = Array.from({ length: totalCols }, (_, i) =>
-      cellText(ws.getRow(r).getCell(i + 1))
-    ).join(' ')
+  let docencia = 0, tutorias = 0, extraClase = 0
 
-    if (!RESUMEN_RE.test(rowText)) continue
+  for (let i = 1; i < horarioRows.length; i++) {   // saltar fila de encabezado
+    const row      = horarioRows[i]
+    const horaText = row[0]?.text ?? ''
+    if (!HORA_RE.test(horaText)) continue
 
-    // Encontrada la sección; leer hasta 4 filas siguientes buscando cabeceras y valores
-    const found = []
-    for (let rr = r; rr <= Math.min(r + 4, ws.rowCount); rr++) {
-      const row = ws.getRow(rr)
-      const cells = Array.from({ length: totalCols }, (_, i) =>
-        cellText(row.getCell(i + 1)).trim()
-      )
-      if (cells.some(t => t)) found.push(cells)
-      if (found.length === 3) break   // título + headers + values es suficiente
+    const horas = parseHoraDuracion(horaText)
+
+    for (let j = 1; j < row.length; j++) {
+      const texto = row[j]?.text ?? ''
+      if (!texto) continue
+      const cat = clasificarActividad(texto)
+      if (cat === 'docencia')    docencia   += horas
+      if (cat === 'tutorias')    tutorias   += horas
+      if (cat === 'extraClase')  extraClase += horas
     }
-
-    if (found.length < 2) return null
-
-    // Eliminar columnas vacías para todas las filas encontradas
-    const usedCols = new Set()
-    found.forEach(row => row.forEach((t, i) => { if (t) usedCols.add(i) }))
-    const cols = [...usedCols].sort((a, b) => a - b)
-
-    return found.map(row => cols.map(c => row[c] ?? ''))
   }
-  return null
+
+  return {
+    docencia:   Math.round(docencia),
+    tutorias:   Math.round(tutorias),
+    culturales: 0,
+    extraClase: Math.round(extraClase),
+    total:      Math.round(docencia + tutorias + extraClase),
+  }
+}
+
+/**
+ * Calcula el nivel de escala óptimo para que el horario + resumen + firmas
+ * siempre quepan en una sola página landscape.
+ *
+ * Estima el total de "líneas de texto" sumando, para cada fila, las líneas
+ * máximas de cualquiera de sus celdas (texto largo → más líneas).
+ * Con eso elige tamaño de fuente, padding y espaciado.
+ */
+function computeHorarioScale(horarioRows) {
+  const defaults = { pt: 9, padH: 40, padV: 0, lineH: 240, sigBefore: 600, sepBefore: 120 }
+  if (!horarioRows?.length) return defaults
+
+  // Caracteres por línea aprox. a 9pt en las columnas de contenido (~1.3" de ancho)
+  const CHARS_PER_LINE = 16
+
+  let totalLines = 0
+  for (const row of horarioRows) {
+    let maxLines = 1
+    for (const c of row) {
+      const len = (c.text || '').trim().length
+      if (len > 0) maxLines = Math.max(maxLines, Math.ceil(len / CHARS_PER_LINE))
+    }
+    totalLines += maxLines
+  }
+
+  // Altura disponible para la tabla del horario ≈ 6700 DXA (landscape carta
+  // con 0.75" de margen, descontando títulos + resumen + firmas + separadores).
+  // Líneas que caben a cada tamaño: lineH = 240 * (pt/9)
+  //   9pt → 240 DXA/línea → 27 líneas
+  //   8pt → 213 DXA/línea → 31 líneas
+  //   7pt → 187 DXA/línea → 36 líneas
+  //   6pt → 160 DXA/línea → 41 líneas
+  if (totalLines <= 27) return { pt: 9, padH: 40, padV: 0, lineH: 240, sigBefore: 600, sepBefore: 120 }
+  if (totalLines <= 31) return { pt: 8, padH: 30, padV: 0, lineH: 213, sigBefore: 480, sepBefore:  80 }
+  if (totalLines <= 36) return { pt: 7, padH: 20, padV: 0, lineH: 200, sigBefore: 360, sepBefore:  60 }
+  return                       { pt: 6, padH: 10, padV: 0, lineH: 180, sigBefore: 240, sepBefore:  40 }
 }
 
 async function readHorarioTable(xlsxFile, sheetName) {
@@ -712,88 +785,89 @@ async function readHorarioTable(xlsxFile, sheetName) {
   return rawRows.map(row => sortedCols.map(c => row[c] ?? { text: '', fill: null }))
 }
 
-function buildResumenTable(resumenRows, tableWidth) {
-  if (!resumenRows || resumenRows.length < 2) return null
+function buildResumenTable(resumen, tableWidth, fontSize) {
+  if (!resumen) return null
 
-  // Detectar si la primera fila es un título fusionado ("Resumen de horas")
-  // o si ya son directamente los encabezados
-  let tituloRow = null
-  let headerRow = null
-  let valuesRow = null
+  const FS = fontSize ?? PT(9)
 
-  if (resumenRows.length === 3) {
-    [tituloRow, headerRow, valuesRow] = resumenRows
-  } else {
-    [headerRow, valuesRow] = resumenRows
-  }
+  const HEADERS = ['Docencia', 'Tutorías', 'Culturales', 'Extra Clase', 'Total']
+  const VALUES  = [
+    String(resumen.docencia),
+    String(resumen.tutorias),
+    String(resumen.culturales),
+    String(resumen.extraClase),
+    String(resumen.total),
+  ]
+  const NUM_COLS = HEADERS.length
+  const colW     = Math.floor(tableWidth / NUM_COLS)
+  const grayBg   = 'F2F2F2'
 
-  const numCols = headerRow.length
-  const colW    = Math.floor(tableWidth / numCols)
-  const grayBg  = 'D9D9D9'
-
-  const rows = []
-
-  // Fila de título (fusionada visualmente usando una sola celda ancha)
-  if (tituloRow) {
-    const titulo = tituloRow.find(t => t) ?? 'Resumen de horas'
-    rows.push(new TableRow({
-      children: [new TableCell({
-        columnSpan: numCols,
-        borders: thinBorder,
-        width: { size: tableWidth, type: WidthType.DXA },
-        shading: { type: ShadingType.CLEAR, fill: grayBg },
-        children: [new Paragraph({
-          alignment: AlignmentType.CENTER,
-          spacing: { before: 40, after: 40 },
-          children: [new TextRun({ text: titulo, bold: true, size: PT(9), font: 'Arial' })],
-        })],
-      })],
-    }))
-  }
-
-  // Fila de encabezados
-  rows.push(new TableRow({
-    children: headerRow.map(h => new TableCell({
+  function hdrCell(text) {
+    return new TableCell({
       borders: thinBorder,
       width: { size: colW, type: WidthType.DXA },
       shading: { type: ShadingType.CLEAR, fill: grayBg },
+      margins: { top: 40, bottom: 40, left: 60, right: 60 },
       children: [new Paragraph({
         alignment: AlignmentType.CENTER,
-        spacing: { before: 40, after: 40 },
-        children: [new TextRun({ text: h, bold: true, size: PT(9), font: 'Arial' })],
+        children: [new TextRun({ text, bold: true, size: FS, font: 'Arial' })],
       })],
-    })),
-  }))
+    })
+  }
 
-  // Fila de valores
-  if (valuesRow) {
-    rows.push(new TableRow({
-      children: valuesRow.map(v => new TableCell({
-        borders: thinBorder,
-        width: { size: colW, type: WidthType.DXA },
-        children: [new Paragraph({
-          alignment: AlignmentType.CENTER,
-          spacing: { before: 40, after: 40 },
-          children: [new TextRun({ text: v, size: PT(9), font: 'Arial' })],
-        })],
-      })),
-    }))
+  function valCell(text, bold = false) {
+    return new TableCell({
+      borders: thinBorder,
+      width: { size: colW, type: WidthType.DXA },
+      margins: { top: 40, bottom: 40, left: 60, right: 60 },
+      children: [new Paragraph({
+        alignment: AlignmentType.CENTER,
+        children: [new TextRun({ text, bold, size: FS, font: 'Arial' })],
+      })],
+    })
   }
 
   return new Table({
     width: { size: tableWidth, type: WidthType.DXA },
-    columnWidths: Array(numCols).fill(colW),
-    rows,
+    columnWidths: Array(NUM_COLS).fill(colW),
+    rows: [
+      // Fila de título fusionada
+      new TableRow({
+        children: [new TableCell({
+          columnSpan: NUM_COLS,
+          borders: thinBorder,
+          width: { size: tableWidth, type: WidthType.DXA },
+          shading: { type: ShadingType.CLEAR, fill: grayBg },
+          margins: { top: 60, bottom: 60, left: 80, right: 80 },
+          children: [new Paragraph({
+            alignment: AlignmentType.CENTER,
+            children: [new TextRun({ text: 'Resumen de horas', bold: true, size: FS, font: 'Arial' })],
+          })],
+        })],
+      }),
+      // Fila de encabezados
+      new TableRow({ children: HEADERS.map(h => hdrCell(h)) }),
+      // Fila de valores
+      new TableRow({
+        children: VALUES.map((v, i) => valCell(v, i === VALUES.length - 1)),
+      }),
+    ],
   })
 }
 
-function buildHorarioSection(job, horarioRows, resumenRows) {
+function buildHorarioSection(job, horarioRows) {
+  // Calcular escala antes de construir cualquier elemento
+  const scale = computeHorarioScale(horarioRows)
+  const FS    = PT(scale.pt)   // font size en half-points
+
   const children = []
 
   children.push(para('HORARIO', {
-    bold: true, size: PT(14), font: 'Arial', align: AlignmentType.CENTER, spaceBefore: 0, spaceAfter: 120,
+    bold: true, size: PT(14), font: 'Arial', align: AlignmentType.CENTER, spaceBefore: 0, spaceAfter: 80,
   }))
-  children.push(para(`Docente: ${job.docente.nombre}`, { bold: true, size: PT(14), font: 'Arial', align: AlignmentType.CENTER, spaceAfter: 120 }))
+  children.push(para(`Docente: ${job.docente.nombre}`, {
+    bold: true, size: PT(12), font: 'Arial', align: AlignmentType.CENTER, spaceBefore: 0, spaceAfter: 80,
+  }))
 
   // Ancho útil en landscape carta: 11" - 2*0.75" = 9.5" = 13680 DXA
   const LAND_CONT_W = convertInchesToTwip(9.5)
@@ -807,17 +881,16 @@ function buildHorarioSection(job, horarioRows, resumenRows) {
       return new TableRow({
         tableHeader: isHeader,
         children: rowData.map(({ text, fill }) => {
-          // Color: encabezado → oliva fijo; datos → color del Excel si existe, sino blanco
           const bgColor = isHeader ? OLIVE_ROW : (fill ?? 'FFFFFF')
           return textCell(text, {
             borders: thinBorder,
             shading: { type: ShadingType.CLEAR, fill: bgColor },
             bold:    isHeader,
             align:   AlignmentType.CENTER,
-            size:    PT(9),
+            size:    FS,
             font:    'Arial',
             width:   { size: colW, type: WidthType.DXA },
-            margins: { top: 0, bottom: 0, left: 40, right: 40 },
+            margins: { top: scale.padV, bottom: scale.padV, left: scale.padH, right: scale.padH },
           })
         }),
       })
@@ -834,13 +907,13 @@ function buildHorarioSection(job, horarioRows, resumenRows) {
     }))
   }
 
-  children.push(para('', { spaceBefore: 120 }))
+  children.push(para('', { spaceBefore: scale.sepBefore, spaceAfter: 0 }))
 
-  // Tabla de resumen de horas (si existe en el Excel)
-  const resumenTable = buildResumenTable(resumenRows, LAND_CONT_W)
+  // Tabla de resumen de horas (calculado desde el horario)
+  const resumenTable = buildResumenTable(calcularResumen(horarioRows), LAND_CONT_W, FS)
   if (resumenTable) {
     children.push(resumenTable)
-    children.push(para('', { spaceBefore: 120 }))
+    children.push(para('', { spaceBefore: scale.sepBefore, spaceAfter: 0 }))
   }
 
   // Tabla de firmas (3 columnas: coordinador | docente | secretaria)
@@ -852,18 +925,18 @@ function buildHorarioSection(job, horarioRows, resumenRows) {
       width: { size: sigColW, type: WidthType.DXA },
       children: [
         new Paragraph({
-          spacing: { before: 600, after: 0, line: 240, lineRule: 'auto' },
+          spacing: { before: scale.sigBefore, after: 0, line: 240, lineRule: 'auto' },
           children: [],
         }),
         new Paragraph({
           alignment: AlignmentType.CENTER,
           spacing: { before: 0, after: 0, line: 240, lineRule: 'auto' },
-          children: [new TextRun({ text: nombre, bold: true })],
+          children: [new TextRun({ text: nombre, bold: true, size: FS })],
         }),
         new Paragraph({
           alignment: AlignmentType.CENTER,
           spacing: { before: 0, after: 0, line: 240, lineRule: 'auto' },
-          children: [new TextRun({ text: cargo })],
+          children: [new TextRun({ text: cargo, size: FS })],
         }),
       ],
     })
@@ -905,13 +978,10 @@ function buildHorarioSection(job, horarioRows, resumenRows) {
 // ─── Función principal ────────────────────────────────────────────────────────
 
 export async function generateDocx(job) {
-  const [horarioRows, resumenRows] = await Promise.all([
-    readHorarioTable(job.horarioXlsx, job.horarioSheetName),
-    readResumenTable(job.horarioXlsx, job.horarioSheetName),
-  ])
+  const horarioRows = await readHorarioTable(job.horarioXlsx, job.horarioSheetName)
 
   const memoSection    = buildMemoSection(job)
-  const horarioSection = buildHorarioSection(job, horarioRows, resumenRows)
+  const horarioSection = buildHorarioSection(job, horarioRows)
 
   const doc = new Document({
     // Default del documento: Arial 9pt (solicitado por usuario)

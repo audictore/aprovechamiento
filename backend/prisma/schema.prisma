@@ -64,6 +64,7 @@ model Auditoria {
   docente        Docente      @relation(fields: [docenteId], references: [id])
   materia        String
   grupo          String       @default("")
+  programa       String       @default("")
 
   // Planeación
   planProfesor      Boolean  @default(false)
