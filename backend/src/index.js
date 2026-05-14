@@ -18,18 +18,30 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url))
 app.use(cors())
 app.use(express.json())
 
+// Rutas con prefijo /api (frontend compilado en producción)
+app.use('/api/auth',          authRouter)
+app.use('/api/cuatrimestres', cuatrimestresRouter)
+app.use('/api/docentes',      requireAuth, docentesRouter)
+app.use('/api/parciales',     parcialesRouter)
+app.use('/api/auditorias',    requireAuth, auditoriasRouter)
+
+// Rutas sin prefijo (compatibilidad con dev y SSE/descargas)
 app.use('/auth',          authRouter)
-app.use('/cuatrimestres', cuatrimestresRouter)  // sin requireAuth
+app.use('/cuatrimestres', cuatrimestresRouter)
 app.use('/docentes',      requireAuth, docentesRouter)
-app.use('/parciales', parcialesRouter)
-// Para SSE y descargas: links <a> y EventSource no mandan headers, el token llega por ?token=
-app.use('/memos', (req, _res, next) => {
+app.use('/parciales',     parcialesRouter)
+app.use('/auditorias',    requireAuth, auditoriasRouter)
+
+// Memos: token por query param para SSE y links de descarga
+const memoTokenMiddleware = (req, _res, next) => {
   if (req.query.token && !req.headers.authorization)
     req.headers.authorization = `Bearer ${req.query.token}`
   next()
-})
-app.use('/memos',       requireAuth, memosRouter)
-app.use('/auditorias',  requireAuth, auditoriasRouter)
+}
+app.use('/api/memos', memoTokenMiddleware)
+app.use('/api/memos', requireAuth, memosRouter)
+app.use('/memos',     memoTokenMiddleware)
+app.use('/memos',     requireAuth, memosRouter)
 
 // Servir frontend en producción
 const frontendDist = path.join(__dirname, '../../frontend/dist')
