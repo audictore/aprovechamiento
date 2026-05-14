@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { getMemosConfig, saveMemosConfig, getMemosFiles, generateMemos, deleteHorario } from '../api.js'
 import { useToast } from '../components/Toast.jsx'
+import HorarioCalendar from '../components/HorarioCalendar.jsx'
 
 const BASE_URL = import.meta.env.VITE_API_URL ?? '/api'
 
@@ -269,7 +270,7 @@ function SeccionConfig({ onSaved }) {
 }
 
 // ─── Sección Archivos ─────────────────────────────────────────────────────────
-function SeccionArchivos({ files, onRefresh }) {
+function SeccionArchivos({ files, onRefresh, horarioSheets, onVerHorario }) {
   const [uploadingCarga,    setUploadingCarga]    = useState(false)
   const [uploadingHorarios, setUploadingHorarios] = useState(false)
   const [deletingFile,      setDeletingFile]      = useState(null)
@@ -372,21 +373,52 @@ function SeccionArchivos({ files, onRefresh }) {
           🗓 Horarios ({files?.horarios?.length ?? 0} archivo{files?.horarios?.length !== 1 ? 's' : ''})
         </div>
         {files?.horarios?.length > 0 ? (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginBottom: 10, maxHeight: 180, overflowY: 'auto' }}>
-            {files.horarios.map(f => (
-              <div key={f.name} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12 }}>
-                <span style={{ flex: 1, color: '#1D9E75' }}>✓ {f.name}</span>
-                <span style={{ opacity: 0.5 }}>{fmt(f.size)}</span>
-                <button
-                  onClick={() => borrarHorario(f.name)}
-                  disabled={deletingFile === f.name}
-                  style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#A32D2D', fontSize: 14, padding: '0 4px', lineHeight: 1 }}
-                  title="Eliminar"
-                >
-                  {deletingFile === f.name ? '…' : '✕'}
-                </button>
-              </div>
-            ))}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 10, maxHeight: 280, overflowY: 'auto' }}>
+            {files.horarios.map(f => {
+              const sheetsInfo = horarioSheets?.find(s => s.file === f.name)
+              const sheets = sheetsInfo?.sheets ?? []
+              return (
+                <div key={f.name} style={{ borderRadius: 6, border: '1px solid var(--border)', padding: '8px 10px' }}>
+                  {/* Fila del archivo */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12 }}>
+                    <span style={{ flex: 1, color: '#1D9E75', fontWeight: 600 }}>✓ {f.name}</span>
+                    <span style={{ opacity: 0.5 }}>{fmt(f.size)}</span>
+                    <button
+                      onClick={() => borrarHorario(f.name)}
+                      disabled={deletingFile === f.name}
+                      style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#A32D2D', fontSize: 14, padding: '0 4px', lineHeight: 1 }}
+                      title="Eliminar"
+                    >
+                      {deletingFile === f.name ? '…' : '✕'}
+                    </button>
+                  </div>
+                  {/* Botones de hojas */}
+                  {sheets.length > 0 && (
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginTop: 6 }}>
+                      {sheets.map(sh => (
+                        <button
+                          key={sh}
+                          onClick={() => onVerHorario({ file: f.name, sheet: sh, nombre: sh })}
+                          style={{
+                            fontSize: 11, padding: '3px 8px',
+                            background: 'rgba(29,158,117,0.1)',
+                            border: '1px solid rgba(29,158,117,0.35)',
+                            borderRadius: 5, cursor: 'pointer',
+                            color: '#157a5a', fontWeight: 600,
+                            transition: 'background 0.15s',
+                          }}
+                          onMouseEnter={e => e.currentTarget.style.background = 'rgba(29,158,117,0.22)'}
+                          onMouseLeave={e => e.currentTarget.style.background = 'rgba(29,158,117,0.1)'}
+                          title={`Ver horario de ${sh}`}
+                        >
+                          📅 {sh}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )
+            })}
           </div>
         ) : (
           <div style={{ fontSize: 12, color: 'var(--text)', opacity: 0.5, marginBottom: 8 }}>
@@ -585,16 +617,29 @@ function SeccionResultados({ files }) {
 
 // ─── Página principal ─────────────────────────────────────────────────────────
 export default function MemosPage({ esAdmin }) {
-  const [files, setFiles] = useState(null)
+  const [files,          setFiles]          = useState(null)
+  const [horarioSheets,  setHorarioSheets]  = useState([])
+  const [calendarModal,  setCalendarModal]  = useState(null)  // null | { file, sheet, nombre }
   const { addToast } = useToast()
 
   function refreshFiles() {
     getMemosFiles()
       .then(r => setFiles(r.data))
       .catch(() => addToast('No se pudo obtener la lista de archivos', 'error'))
+    refreshSheets()
   }
 
-  useEffect(() => { refreshFiles() }, [])
+  function refreshSheets() {
+    const token = localStorage.getItem('token')
+    fetch(`${BASE_URL}/memos/horario-sheets`, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+      .then(r => r.json())
+      .then(data => setHorarioSheets(Array.isArray(data) ? data : []))
+      .catch(() => {})
+  }
+
+  useEffect(() => { refreshFiles(); refreshSheets() }, [])
 
   const cardStyle = {
     background: 'var(--surface)',
@@ -629,7 +674,12 @@ export default function MemosPage({ esAdmin }) {
         <div style={titleStyle}>📁 Archivos de entrada</div>
         {files === null
           ? <div className="loading"><span className="spinner" /> Cargando…</div>
-          : <SeccionArchivos files={files} onRefresh={refreshFiles} />
+          : <SeccionArchivos
+              files={files}
+              onRefresh={refreshFiles}
+              horarioSheets={horarioSheets}
+              onVerHorario={setCalendarModal}
+            />
         }
       </div>
 
@@ -661,6 +711,16 @@ export default function MemosPage({ esAdmin }) {
           : <SeccionResultados files={files} />
         }
       </div>
+
+      {/* Modal de horario */}
+      {calendarModal && (
+        <HorarioCalendar
+          file={calendarModal.file}
+          sheet={calendarModal.sheet}
+          docenteNombre={calendarModal.nombre}
+          onClose={() => setCalendarModal(null)}
+        />
+      )}
     </div>
   )
 }

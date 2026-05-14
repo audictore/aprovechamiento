@@ -621,6 +621,26 @@ function buildMemoSection(job) {
 const HORA_RE = /^\d{1,2}[:.]\d{0,2}\s*[-–]/
 const DIA_RE  = /lunes|martes|mi[eé]rcoles|jueves|viernes|s[aá]bado/i
 
+// Paleta de colores por materia (igual que el componente FullCalendar)
+const SUBJECT_COLORS = [
+  'CB4335','8E44AD','3498DB','27AE60','E6B800',
+  'E67E22','16A085','D35400','2C3E50','1A5276',
+  '6C3483','117A65','7D6608','784212','4A235A',
+]
+const HDR_GREEN  = '1D9E75'  // encabezado de días — verde UPMH
+const TIME_BG    = 'F2F2F2'  // fondo columna de hora
+const EMPTY_BG   = 'FFFFFF'  // celda vacía
+
+function normSubject(text) {
+  return (text || '').toLowerCase().normalize('NFD').replace(/\p{Mn}/gu, '').trim().slice(0, 30)
+}
+function subjectColor(name, map) {
+  const key = normSubject(name)
+  if (!key) return EMPTY_BG
+  if (!map.has(key)) map.set(key, SUBJECT_COLORS[map.size % SUBJECT_COLORS.length])
+  return map.get(key)
+}
+
 // Extrae el color de fondo de una celda Excel como hex RGB (sin alfa), o null
 function cellFill(excelCell) {
   const f = excelCell.fill
@@ -628,7 +648,6 @@ function cellFill(excelCell) {
   if (f.type === 'pattern' && f.fgColor) {
     const argb = f.fgColor.argb || f.fgColor.theme
     if (argb && typeof argb === 'string' && argb.length >= 6) {
-      // ARGB → RGB (quitar los 2 primeros caracteres de alfa)
       return argb.length === 8 ? argb.slice(2).toUpperCase() : argb.toUpperCase()
     }
   }
@@ -689,40 +708,50 @@ function calcularResumen(horarioRows) {
 
 /**
  * Calcula el nivel de escala óptimo para que el horario + resumen + firmas
- * siempre quepan en una sola página landscape.
+ * quepan en una sola página landscape (márgenes 0.5").
  *
- * Estima el total de "líneas de texto" sumando, para cada fila, las líneas
- * máximas de cualquiera de sus celdas (texto largo → más líneas).
- * Con eso elige tamaño de fuente, padding y espaciado.
+ * Ahora cada celda de actividad tiene +1 línea de rango de tiempo,
+ * y las columnas de días son más anchas (~2"), así que CHARS_PER_LINE es mayor.
  */
 function computeHorarioScale(horarioRows) {
-  const defaults = { pt: 9, padH: 40, padV: 0, lineH: 240, sigBefore: 600, sepBefore: 120 }
+  const defaults = { pt: 9, padH: 40, padV: 30, lineH: 240, sigBefore: 480, sepBefore: 80 }
   if (!horarioRows?.length) return defaults
 
-  // Caracteres por línea aprox. a 9pt en las columnas de contenido (~1.3" de ancho)
-  const CHARS_PER_LINE = 16
+  // Ancho de columna de día ≈ (10" - 0.49") / 5 cols ≈ 1.9" → ~25 chars a 9pt
+  const CHARS_PER_LINE = 22
 
   let totalLines = 0
-  for (const row of horarioRows) {
-    let maxLines = 1
-    for (const c of row) {
-      const len = (c.text || '').trim().length
-      if (len > 0) maxLines = Math.max(maxLines, Math.ceil(len / CHARS_PER_LINE))
+  for (let ri = 0; ri < horarioRows.length; ri++) {
+    const row      = horarioRows[ri]
+    const isHeader = ri === 0
+    let maxLines   = 1
+    for (let ci = 1; ci < row.length; ci++) {   // saltar col. de hora
+      const txt = (row[ci]?.text || '').trim()
+      if (!txt) continue
+      if (isHeader) {
+        maxLines = Math.max(maxLines, 1)
+      } else {
+        // +1 por la línea del rango de tiempo (ej. "9:00 - 12:00")
+        const textLines = Math.ceil(txt.replace(/\n/g, ' ').length / CHARS_PER_LINE)
+        maxLines = Math.max(maxLines, 1 + Math.max(textLines, 1))
+      }
     }
     totalLines += maxLines
   }
 
-  // Altura disponible para la tabla del horario ≈ 6700 DXA (landscape carta
-  // con 0.75" de margen, descontando títulos + resumen + firmas + separadores).
-  // Líneas que caben a cada tamaño: lineH = 240 * (pt/9)
-  //   9pt → 240 DXA/línea → 27 líneas
-  //   8pt → 213 DXA/línea → 31 líneas
-  //   7pt → 187 DXA/línea → 36 líneas
-  //   6pt → 160 DXA/línea → 41 líneas
-  if (totalLines <= 27) return { pt: 9, padH: 40, padV: 0, lineH: 240, sigBefore: 600, sepBefore: 120 }
-  if (totalLines <= 31) return { pt: 8, padH: 30, padV: 0, lineH: 213, sigBefore: 480, sepBefore:  80 }
-  if (totalLines <= 36) return { pt: 7, padH: 20, padV: 0, lineH: 200, sigBefore: 360, sepBefore:  60 }
-  return                       { pt: 6, padH: 10, padV: 0, lineH: 180, sigBefore: 240, sepBefore:  40 }
+  // Altura disponible para la tabla ≈ 7800 DXA
+  // (landscape carta 12240 DXA − 2×0.5"=1440 márgenes − ~3000 títulos+resumen+firmas)
+  // Líneas que caben: lineH DXA/línea
+  //   9pt → 240 → ~32 líneas
+  //   8pt → 213 → ~36 líneas
+  //   7pt → 187 → ~41 líneas
+  //   6pt → 160 → ~48 líneas
+  //   5pt → 133 → ~58 líneas
+  if (totalLines <= 32) return { pt: 9, padH: 40, padV: 30, lineH: 240, sigBefore: 480, sepBefore:  80 }
+  if (totalLines <= 38) return { pt: 8, padH: 30, padV: 20, lineH: 213, sigBefore: 400, sepBefore:  60 }
+  if (totalLines <= 46) return { pt: 7, padH: 20, padV: 10, lineH: 187, sigBefore: 320, sepBefore:  40 }
+  if (totalLines <= 56) return { pt: 6, padH: 10, padV: 5,  lineH: 160, sigBefore: 240, sepBefore:  30 }
+  return                       { pt: 5, padH: 6,  padV: 0,  lineH: 133, sigBefore: 180, sepBefore:  20 }
 }
 
 async function readHorarioTable(xlsxFile, sheetName) {
@@ -775,10 +804,19 @@ async function readHorarioTable(xlsxFile, sheetName) {
 
   if (!rawRows.length) return null
 
-  // Paso 3: filtrar columnas vacías
+  // Paso 3: detectar columnas de sábado/domingo para excluirlas
+  const headerRow0 = rawRows[0] || []
+  const excludedCols = new Set()
+  headerRow0.forEach((cell, idx) => {
+    if (/s[aá]bado|domingo/i.test(cell.text)) excludedCols.add(idx)
+  })
+
+  // Filtrar columnas vacías (y excluir sábado/domingo)
   const usedCols = new Set([0])
   for (const row of rawRows) {
-    row.forEach((cell, idx) => { if (cell.text) usedCols.add(idx) })
+    row.forEach((cell, idx) => {
+      if (cell.text && !excludedCols.has(idx)) usedCols.add(idx)
+    })
   }
   const sortedCols = [...usedCols].sort((a, b) => a - b)
 
@@ -862,43 +900,145 @@ function buildHorarioSection(job, horarioRows) {
 
   const children = []
 
-  children.push(para('HORARIO', {
-    bold: true, size: PT(14), font: 'Arial', align: AlignmentType.CENTER, spaceBefore: 0, spaceAfter: 80,
+  // Títulos escalados según el tamaño de fuente elegido
+  const titlePt    = Math.min(13, scale.pt + 4)
+  const subtitlePt = Math.min(11, scale.pt + 2)
+
+  children.push(para(job.docente.nombre.toUpperCase(), {
+    bold: true, size: PT(titlePt), font: 'Arial', align: AlignmentType.CENTER, spaceBefore: 0, spaceAfter: 30,
   }))
-  children.push(para(`Docente: ${job.docente.nombre}`, {
-    bold: true, size: PT(12), font: 'Arial', align: AlignmentType.CENTER, spaceBefore: 0, spaceAfter: 80,
+  children.push(para(`Horario - ${job.cuatrimestre}`, {
+    bold: true, size: PT(subtitlePt), font: 'Arial', align: AlignmentType.CENTER, spaceBefore: 0, spaceAfter: 60,
   }))
 
-  // Ancho útil en landscape carta: 11" - 2*0.75" = 9.5" = 13680 DXA
-  const LAND_CONT_W = convertInchesToTwip(9.5)
+  // Ancho útil en landscape carta con márgenes 0.5": 11" - 2*0.5" = 10"
+  const LAND_CONT_W = convertInchesToTwip(10)
 
   if (horarioRows && horarioRows.length) {
-    const numCols = Math.max(...horarioRows.map(r => r.length))
-    const colW    = Math.floor(LAND_CONT_W / numCols)
+    const colorMap  = new Map()   // materia → color hex
+    const numCols   = Math.max(...horarioRows.map(r => r.length))
+    const timeColW  = 700   // columna de hora — angosta (≈ 0.49")
+    const dayColW   = Math.floor((LAND_CONT_W - timeColW) / Math.max(numCols - 1, 1))
+    const colW      = dayColW   // alias para compatibilidad con el resto del código
 
-    const tableRows = horarioRows.map((rowData, idx) => {
-      const isHeader = idx === 0
-      return new TableRow({
-        tableHeader: isHeader,
-        children: rowData.map(({ text, fill }) => {
-          const bgColor = isHeader ? OLIVE_ROW : (fill ?? 'FFFFFF')
-          return textCell(text, {
-            borders: thinBorder,
-            shading: { type: ShadingType.CLEAR, fill: bgColor },
-            bold:    isHeader,
-            align:   AlignmentType.CENTER,
-            size:    FS,
-            font:    'Arial',
-            width:   { size: colW, type: WidthType.DXA },
-            margins: { top: scale.padV, bottom: scale.padV, left: scale.padH, right: scale.padH },
-          })
-        }),
+    // ── Calcular fusiones verticales (rowSpan) ───────────────────────────────
+    // mergeMap[rowIdx][colIdx] = { rowSpan, skip }
+    const mergeMap = horarioRows.map(row => row.map(() => ({ rowSpan: 1, skip: false })))
+
+    for (let colIdx = 1; colIdx < numCols; colIdx++) {          // omitir col. de hora
+      for (let rowIdx = 1; rowIdx < horarioRows.length; rowIdx++) {  // omitir encabezado
+        if (mergeMap[rowIdx][colIdx]?.skip) continue
+        const curText = (horarioRows[rowIdx][colIdx]?.text || '').trim()
+        if (!curText) continue
+
+        let span = 1
+        while (rowIdx + span < horarioRows.length) {
+          const nextText = (horarioRows[rowIdx + span]?.[colIdx]?.text || '').trim()
+          if (nextText === curText) {
+            mergeMap[rowIdx + span][colIdx].skip = true
+            span++
+          } else break
+        }
+        mergeMap[rowIdx][colIdx].rowSpan = span
+      }
+    }
+
+    // ── Construir filas de la tabla ──────────────────────────────────────────
+    const tableRows = horarioRows.map((rowData, rowIdx) => {
+      const isHeader = rowIdx === 0
+      const cells = []
+
+      rowData.forEach(({ text }, colIdx) => {
+        // Omitir celdas que están fusionadas en una celda superior
+        if (!isHeader && mergeMap[rowIdx]?.[colIdx]?.skip) return
+
+        const isTimeCol = colIdx === 0
+        const rowSpan   = (!isHeader && !isTimeCol)
+          ? (mergeMap[rowIdx]?.[colIdx]?.rowSpan ?? 1)
+          : 1
+
+        // ── Color de fondo y texto ─────────────────────────────────────────
+        let bgColor, textColor
+        if (isHeader) {
+          bgColor   = isTimeCol ? '4A4A4A' : HDR_GREEN
+          textColor = 'FFFFFF'
+        } else if (isTimeCol) {
+          bgColor   = TIME_BG
+          textColor = '555555'
+        } else if (text) {
+          const subject = text.split('\n')[0].trim()
+          bgColor   = subjectColor(subject, colorMap)
+          textColor = 'FFFFFF'
+        } else {
+          bgColor   = EMPTY_BG
+          textColor = '000000'
+        }
+
+        // Borde derecho más marcado en la columna de hora
+        const cellBorders = isTimeCol
+          ? {
+              top:    { style: BorderStyle.SINGLE, size: 5,  color: 'cccccc' },
+              bottom: { style: BorderStyle.SINGLE, size: 5,  color: 'cccccc' },
+              left:   { style: BorderStyle.SINGLE, size: 5,  color: 'cccccc' },
+              right:  { style: BorderStyle.SINGLE, size: 12, color: '888888' },
+            }
+          : thinBorder
+
+        // En la columna de hora mostrar solo la hora de inicio ("7:00" en vez de "7:00 - 8:00")
+        let displayText = text || ''
+        if (isTimeCol && !isHeader && displayText) {
+          const m = displayText.match(/^(\d{1,2}[:.]\d{2})/)
+          if (m) displayText = m[1].replace('.', ':')
+        }
+
+        // Para celdas de actividad: calcular rango de tiempo y ponerlo arriba
+        // igual que el FullCalendar ("9:00 - 12:00")
+        let timeLabelRuns = []
+        if (!isHeader && !isTimeCol && text) {
+          const startRaw = horarioRows[rowIdx]?.[0]?.text || ''
+          const endRaw   = horarioRows[rowIdx + rowSpan - 1]?.[0]?.text || ''
+          const startT   = (startRaw.match(/^(\d{1,2}[:.]\d{2})/) || [])[1]?.replace('.', ':') || ''
+          const endT     = (endRaw.match(/[-–]\s*(\d{1,2}[:.]\d{2})/) || [])[1]?.replace('.', ':') || ''
+          const label    = startT && endT ? `${startT} - ${endT}` : startT
+          if (label) timeLabelRuns = [
+            new TextRun({ text: label, bold: true, size: Math.max(FS - 2, PT(6)), font: 'Arial', color: textColor }),
+            new TextRun({ text: '', break: 1 }),
+          ]
+        }
+
+        cells.push(new TableCell({
+          rowSpan:       rowSpan > 1 ? rowSpan : undefined,
+          borders:       cellBorders,
+          shading:       { type: ShadingType.CLEAR, fill: bgColor },
+          verticalAlign: VerticalAlign.TOP,
+          width:         { size: isTimeCol ? timeColW : dayColW, type: WidthType.DXA },
+          margins:       { top: scale.padV || 40, bottom: scale.padV || 40, left: isTimeCol ? 20 : scale.padH, right: isTimeCol ? 20 : scale.padH },
+          children: [new Paragraph({
+            alignment: AlignmentType.CENTER,
+            spacing:   { before: 0, after: 0, line: 240, lineRule: 'auto' },
+            children: [
+              ...timeLabelRuns,
+              ...displayText.split('\n').map((line, li) =>
+                new TextRun({
+                  text:  line,
+                  bold:  isHeader,
+                  size:  FS,
+                  font:  'Arial',
+                  color: textColor,
+                  break: li > 0 || timeLabelRuns.length > 0 ? 1 : 0,
+                })
+              ),
+            ],
+          })],
+        }))
       })
+
+      return new TableRow({ tableHeader: isHeader, children: cells })
     })
 
     children.push(new Table({
       width: { size: LAND_CONT_W, type: WidthType.DXA },
-      columnWidths: Array(numCols).fill(colW),
+      columnWidths: [timeColW, ...Array(numCols - 1).fill(dayColW)],
       rows: tableRows,
     }))
   } else {
@@ -964,10 +1104,10 @@ function buildHorarioSection(job, horarioRows) {
           orientation: PageOrientation.LANDSCAPE,
         },
         margin: {
-          top:    convertInchesToTwip(0.75),
-          bottom: convertInchesToTwip(0.75),
-          left:   convertInchesToTwip(0.75),
-          right:  convertInchesToTwip(0.75),
+          top:    convertInchesToTwip(0.5),
+          bottom: convertInchesToTwip(0.5),
+          left:   convertInchesToTwip(0.5),
+          right:  convertInchesToTwip(0.5),
         },
       },
     },

@@ -7,6 +7,7 @@ import jwt from 'jsonwebtoken'
 import archiver from 'archiver'
 import { buildJobs } from '../lib/memos/buildJobs.js'
 import { generateDocx } from '../lib/memos/generateDocx.js'
+import { parseCalendarEvents, listHorarioSheets } from '../lib/memos/parseCalendarEvents.js'
 
 const router = Router()
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
@@ -198,6 +199,25 @@ router.get('/download-all', (req, res) => {
 
   for (const f of archivos) archive.file(path.join(OUTPUT_DIR, f), { name: f })
   archive.finalize()
+})
+
+// GET /memos/horario-sheets — lista hojas de todos los horarios subidos
+router.get('/horario-sheets', async (_req, res, next) => {
+  try {
+    const sheets = await listHorarioSheets(HORARIOS_DIR)
+    res.json(sheets)
+  } catch (e) { next(e) }
+})
+
+// GET /memos/calendar-events?file=X&sheet=Y — eventos FullCalendar de un docente
+router.get('/calendar-events', async (req, res, next) => {
+  try {
+    const { file, sheet } = req.query
+    if (!file) return res.status(400).json({ error: 'Falta parámetro file' })
+    const xlsxPath = path.join(HORARIOS_DIR, path.basename(file))
+    const events = await parseCalendarEvents(xlsxPath, sheet || null)
+    res.json(events)
+  } catch (e) { next(e) }
 })
 
 // DELETE /memos/horarios/:filename — eliminar un horario subido
